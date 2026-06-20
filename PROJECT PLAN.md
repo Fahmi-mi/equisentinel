@@ -17,6 +17,7 @@ Versi 2.0 — Semester Break Project
 * [11. Evaluasi & Skor Plan (Versi Revisi)](#11-evaluasi-skor-plan-versi-revisi)
 * [12. Manajemen Risiko](#12-manajemen-risiko)
 * [13. Struktur Repository](#13-struktur-repository)
+* [14. Fase 4 (Opsional) — Data Engineering & ETL Layer](#14-fase-4-opsional--data-engineering--etl-layer)
 * [Penutup](#penutup)
 
 ---
@@ -313,7 +314,57 @@ Monorepo dengan struktur berikut:
 
 ---
 
+# 14. Fase 4 (Opsional) — Data Engineering & ETL Layer
+Fase ini bersifat opsional dan baru dipertimbangkan setelah Fase 1–3 selesai sepenuhnya dan stabil. Tujuannya menambahkan layer batch processing untuk analitik historis yang lebih kaya, tanpa mengganggu jalur real-time yang sudah berjalan. Disimpan sebagai referensi untuk dipertimbangkan di kemudian hari.
+
+## 14.1 Posisi dalam Arsitektur
+Fase 4 berjalan berdampingan (bukan menggantikan) jalur real-time NATS + Go yang sudah ada. NATS/Go menangani streaming per detik; ETL menangani pemrosesan batch terjadwal (per beberapa menit/jam) untuk agregasi dan analitik historis.
+* Extract: menarik data dari tabel PostgreSQL existing (stock_prices, news_articles) serta opsional API eksternal untuk data historis tambahan (mis. data historis BEI).
+* Transform: agregasi candle OHLCV per interval (1 menit, 5 menit, 1 jam), kalkulasi indikator teknikal (SMA, EMA, RSI, Bollinger Bands), dan data cleaning (outlier removal, gap filling).
+* Load: menulis hasil ke tabel warehouse baru yang terpisah dari tabel transaksional, agar query analitik berat tidak membebani sistem real-time.
+
+## 14.2 Tech Stack Tambahan
+* Apache Airflow: orchestrator DAG untuk scheduling, dependency management, retry, dan monitoring job ETL.
+* dbt (data build tool) — opsional: untuk transformasi SQL yang lebih terstruktur dan ter-versioning jika kompleksitas transform bertambah.
+* pandas / polars: komputasi transform di sisi Python untuk kalkulasi indikator teknikal.
+* Tabel warehouse baru di PostgreSQL: candles_1m, candles_5m, candles_1h, technical_indicators, feature_store_ai.
+* pgbouncer — opsional: connection pooling terpisah agar query batch ETL tidak rebutan koneksi dengan Go gateway.
+
+## 14.3 Dampak Terhadap Sistem Existing
+Sebagian besar perubahan bersifat aditif. Berikut klasifikasinya:
+
+**Murni tambahan (tidak menyentuh kode existing)**
+* Container Airflow baru di docker-compose.yml.
+* Folder /etl baru berisi DAG Python, terpisah dari codebase AI worker dan gateway.
+* Tabel warehouse baru — tidak mengubah skema stock_prices, anomaly_events, atau ai_analyses yang sudah ada.
+* Halaman dashboard analitik historis baru (route + Livewire component baru).
+
+**Modifikasi ringan (aditif terhadap kode existing)**
+* AI Worker: opsional menambah satu state baru di LangGraph untuk membaca tabel technical_indicators sebagai konteks tambahan sebelum reasoning ke LLM. Sistem tetap berfungsi penuh tanpa perubahan ini.
+* Prometheus: tambah scrape target untuk metrik Airflow.
+* .env: tambah variabel kredensial Airflow dan koneksi warehouse, tidak menghapus variabel lama.
+* CI/CD: tambah satu workflow baru untuk lint/test DAG.
+
+**Perlu kehati-hatian khusus**
+* Resource contention: Airflow scheduler + webserver menambah overhead RAM sekitar 1–1.5GB. Perlu cek headroom mesin sebelum mengaktifkan.
+* Query batch yang berat berpotensi membebani PostgreSQL real-time. Mitigasi: gunakan pgbouncer/connection pool terpisah, dan jadwalkan job di luar jam simulasi intensif.
+
+## 14.4 Manfaat yang Diharapkan
+* AI Worker mendapat konteks lebih kaya — analisis tidak hanya berdasar berita, tapi juga indikator teknikal (mis. kondisi overbought/oversold) sebagai sinyal tambahan.
+* Dashboard mendapat halaman analitik historis: tren jangka panjang, perbandingan indikator antar emiten, laporan periodik.
+* Query analitik berat tidak lagi membebani tabel transaksional real-time karena dipisah ke warehouse khusus.
+
+## 14.5 Kriteria Mulai Fase 4
+Fase 4 baru layak dimulai jika seluruh kondisi berikut terpenuhi:
+1. Fase 1–3 berjalan stabil tanpa bug kritis selama minimal beberapa hari berturut-turut.
+2. Tidak ada lagi perubahan besar yang direncanakan pada skema tabel PostgreSQL existing.
+3. Tersedia waktu dan resource tambahan (waktu liburan masih cukup, atau dilanjutkan di luar masa liburan sebagai proyek iteratif).
+
+> *Estimasi effort Fase 4 jauh lebih ringan dibanding Fase 1–3 karena tidak ada pembangunan ulang — murni menambah satu layer baru di atas fondasi yang sudah ada.*
+
+---
+
 # Penutup
-Plan versi revisi ini telah mengintegrasikan rekomendasi dari review awal mencakup pembagian scope ke tiga fase MVP, definisi kontrak data Protobuf yang eksplisit, strategi keamanan berlapis, observability dengan Prometheus + Grafana, testing strategy yang terstruktur, dan CI/CD pipeline berbasis GitHub Actions.
+Plan versi revisi ini telah mengintegrasikan rekomendasi dari review awal mencakup pembagian scope ke tiga fase MVP, definisi kontrak data Protobuf yang eksplisit, strategi keamanan berlapis, observability dengan Prometheus + Grafana, testing strategy yang terstruktur, dan CI/CD pipeline berbasis GitHub Actions. Fase 4 (ETL) disertakan sebagai referensi opsional untuk dipertimbangkan setelah Fase 1–3 tuntas.
 
 *Jika Fase 1 dan Fase 2 berhasil diselesaikan, EquiSentinel akan menjadi salah satu portofolio paling komprehensif yang mendemonstrasikan kemampuan sistem terdistribusi, event-driven architecture, dan AI integration secara bersamaan.*
