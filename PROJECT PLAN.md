@@ -1,6 +1,8 @@
 # EquiSentinel
 Project Plan — Revised & Detailed
+
 *Real-Time AI-Powered Stock Market Analytics System*
+
 Versi 2.0 — Semester Break Project
 
 # Daftar Isi
@@ -23,9 +25,7 @@ Versi 2.0 — Semester Break Project
 ---
 
 # 1. Ringkasan Proyek
-EquiSentinel adalah sistem pemantauan dan analitik pasar saham real-time berskala enterprise. Sistem ini menggunakan Agen AI otonom sebagai "Analis Keuangan Pribadi" yang secara otomatis mendeteksi anomali harga, menarik konteks berita finansial terkait, dan memberikan analisis sentimen terstruktur langsung di dashboard.
-
-Ketika terjadi pergerakan harga yang tidak wajar pada suatu emiten — misalnya saham anjlok drastis atau volume transaksi meledak — sistem secara otomatis mengkorelasikan data teknikal dengan berita finansial terbaru, lalu menyimpulkan apakah anomali tersebut didorong oleh faktor teknikal, sentimen pasar, atau aksi korporasi.
+EquiSentinel adalah sistem pemantauan dan analitik pasar saham real-time berskala enterprise. Sistem ini menggunakan Agen AI otonom sebagai "Analis Keuangan Pribadi" yang secara otomatis mendeteksi anomali harga, menarik konteks berita finansial terkait, dan memberikan analisis sentimen terstruktur langsung di dashboard. Ketika terjadi pergerakan harga yang tidak wajar pada suatu emiten (misalnya saham anjlok drastis atau volume transaksi meledak), sistem secara otomatis mengkorelasikan data teknikal dengan berita finansial terbaru, lalu menyimpulkan apakah anomali tersebut didorong oleh faktor teknikal, sentimen pasar, atau aksi korporasi.
 
 ---
 
@@ -36,9 +36,7 @@ Mengingat kompleksitas sistem, pengerjaan dibagi menjadi 3 fase bertahap agar pr
 |---|---|---|---|
 | Fase 1 — Fondasi | Minggu 1–3 | Simulator + NATS + Go WebSocket + Dashboard basic (grafik live) | Target awal |
 | Fase 2 — AI Core | Minggu 4–6 | Python AI Worker + LangGraph state machine + notifikasi anomali | Setelah Fase 1 selesai |
-| Fase 3 — Polish | Minggu 7+ | Human-in-the-Loop feedback, historis PostgreSQL, LangSmith monitoring | Opsional / iterasi |
-
-> *Fase 1 harus bisa berjalan mandiri sebagai sistem real-time dashboard tanpa AI. Ini memastikan fondasi teknis solid sebelum menambah kompleksitas AI.*
+| Fase 3 — Polish | Minggu 7+ | Human-in-the-Loop feedback, historis PostgreSQL, LangSmith monitoring | Iterasi |
 
 ---
 
@@ -56,8 +54,6 @@ Tulang punggung komunikasi berkecepatan tinggi antar service.
 * Dua stream utama: stock.quotes (data harga, high-throughput) dan stock.news (berita finansial).
 * Stream ketiga: stock.anomaly (output dari Go setelah filtering) dengan consumer group untuk AI worker.
 * Priority Queue: anomali dengan severity tinggi (>5% dalam 1 menit) mendapat prioritas lebih tinggi dalam antrian.
-
-> *NATS dipilih atas Kafka karena footprint jauh lebih ringan, latensi lebih rendah (sub-millisecond), dan lebih mudah di-setup untuk proyek solo.*
 
 ## 3.3 API Gateway & Orchestrator — Go (Golang)
 Service sentral yang menjadi jembatan antara semua komponen.
@@ -85,12 +81,13 @@ Database utama untuk semua data persisten.
 * LangSmith: monitoring log pemikiran agen, latensi per state, token usage, dan alur keputusan.
 * Sentiment Caching: hasil analisis per emiten disimpan dalam Redis (TTL 5 menit) untuk menghindari API call berulang.
 
-## 3.6 Frontend — TALL Stack
-* Laravel 11 + Livewire 3: manajemen user, autentikasi, halaman historis, dan komponen feedback Human-in-the-Loop.
-* Alpine.js: renderer WebSocket yang ringan untuk grafik candlestick real-time. Implementasi Capped Buffer (circular array, max 500 data points) dan RequestAnimationFrame untuk mencegah memory leak.
+## 3.6 Frontend — SvelteKit
+* SvelteKit (Node.js runtime standar): framework compiler-based, tanpa Virtual DOM, sehingga bundle size lebih kecil dan overhead runtime jauh lebih rendah dibanding framework berbasis React seperti Next.js.
+* Svelte Stores (writable/derived): state management reaktif native untuk menangani data WebSocket real-time. Implementasi Capped Buffer (circular array, max 500 data points) dan RequestAnimationFrame untuk render grafik candlestick agar tidak terjadi memory leak.
+* `+page.server.ts` / Form Actions: server-side data loading untuk halaman historis dan submit feedback Human-in-the-Loop langsung ke PostgreSQL, tanpa API layer terpisah.
 * Tailwind CSS 3: styling utility-first yang konsisten.
-* Laravel Sanctum: autentikasi token untuk semua API endpoint dan WebSocket handshake.
-* Charting library: TradingView Lightweight Charts (free, open-source) untuk grafik candlestick profesional.
+* Lucia Auth (atau JWT custom via `+hooks.server.ts`): autentikasi token untuk semua API endpoint dan WebSocket handshake
+* Charting library: TradingView Lightweight Charts (free, open-source, framework-agnostic) untuk grafik candlestick profesional.
 
 ---
 
@@ -101,7 +98,7 @@ Sistem beroperasi dalam pola event-driven yang terdiri dari empat tahap:
 1. Ingestion: Python Simulator → NATS (stock.quotes, stock.news)
 2. Routing: Go Service → WebSocket (visual) + NATS stock.anomaly (analitik)
 3. AI Analysis: Python Worker (LangGraph) → Ollama → hasil ke NATS stock.results
-4. Reporting: Go Service → Laravel Dashboard via WebSocket + simpan ke PostgreSQL
+4. Reporting: Go Service → SvelteKit Dashboard via WebSocket + simpan ke PostgreSQL
 
 ## 4.2 Definisi Kontrak Data (Protobuf)
 Semua komunikasi antar-service menggunakan skema Protobuf yang terdefinisi:
@@ -123,15 +120,15 @@ Worker Python mengeksekusi state machine berikut untuk setiap AnomalyEvent:
 Keamanan dirancang berlapis (defense-in-depth) di setiap layer sistem:
 
 ## 5.1 Autentikasi & Otorisasi
-* Laravel Sanctum: semua API endpoint dan WebSocket handshake wajib menyertakan token Sanctum.
+* Lucia Auth (atau JWT custom via SvelteKit hooks): semua API endpoint dan WebSocket handshake wajib menyertakan token autentikasi yang valid.
 * NATS Authentication: gunakan NATS credentials file (NKeys) untuk mengamankan koneksi antara Go service, Python Simulator, dan Python AI Worker ke NATS server.
 * Role-Based Access: dua role — Admin (bisa lihat semua data + kelola user) dan Viewer (hanya bisa melihat dashboard).
 
 ## 5.2 Keamanan Jaringan
 * Semua komunikasi internal service (Go ↔ NATS, Python ↔ NATS) berjalan di Docker internal network, tidak terekspos ke publik.
 * WebSocket dari Go ke browser: gunakan WSS (WebSocket Secure) dengan TLS.
-* CORS Policy: whitelist hanya domain frontend Laravel yang diizinkan mengakses Go WebSocket endpoint.
-* Rate Limiting: pasang middleware rate limiter di Laravel (60 req/menit per user) dan di Go (100 WebSocket connection per IP).
+* CORS Policy: whitelist hanya domain frontend SvelteKit yang diizinkan mengakses Go WebSocket endpoint.
+* Rate Limiting: pasang middleware rate limiter di SvelteKit (60 req/menit per user, via hooks.server.ts) dan di Go (100 WebSocket connection per IP).
 
 ## 5.3 Keamanan Data
 * Secrets Management: semua kredensial (database password, NATS credentials, API keys) disimpan dalam file .env yang TIDAK di-commit ke Git. Gunakan .env.example sebagai template.
@@ -145,7 +142,7 @@ Keamanan dirancang berlapis (defense-in-depth) di setiap layer sistem:
 |---|---|---|
 | Database Password | .env lokal | Environment variable di server / Docker secret |
 | NATS Credentials | nats.creds file lokal | Docker secret / K8s secret |
-| Sanctum App Key | php artisan key:generate | Set manual di server, rotasi berkala |
+| Auth Secret (Lucia/JWT) | .env lokal (`openssl rand -base64 32`) | Set manual di server, rotasi berkala |
 | LangSmith API Key | .env lokal | Environment variable di server |
 
 ---
@@ -155,7 +152,7 @@ Keamanan dirancang berlapis (defense-in-depth) di setiap layer sistem:
 ## 6.1 Logging Strategy
 * Go Service: gunakan zerolog untuk structured logging (JSON format). Log setiap anomali yang terdeteksi, WebSocket connection/disconnection, dan error NATS.
 * Python AI Worker: gunakan structlog. Log setiap state transition LangGraph, LLM call latency, dan Pydantic validation error.
-* Laravel: manfaatkan built-in Laravel logging (daily channel) untuk request log, auth event, dan feedback submission.
+* SvelteKit: gunakan library seperti `pino` untuk structured logging di server-side hooks. Log request, auth event, dan feedback submission.
 * Log Level: DEBUG di development, INFO di production. ERROR dan CRITICAL selalu di-log di semua environment.
 
 ## 6.2 Metrics & Alerting
@@ -169,7 +166,7 @@ Keamanan dirancang berlapis (defense-in-depth) di setiap layer sistem:
 ## 6.3 Health Checks
 * Go Service: endpoint GET /health mengembalikan status koneksi NATS dan jumlah WebSocket aktif.
 * Python Worker: endpoint GET /health mengembalikan status koneksi NATS, status Ollama, dan queue depth.
-* Laravel: gunakan Laravel Health package untuk cek koneksi PostgreSQL, Redis, dan storage.
+* SvelteKit: endpoint `/api/health` (route handler) untuk cek koneksi PostgreSQL, Redis, dan storage.
 * Docker Compose healthcheck: setiap service memiliki healthcheck definition agar Docker tahu kapan service siap.
 
 ---
@@ -178,7 +175,7 @@ Keamanan dirancang berlapis (defense-in-depth) di setiap layer sistem:
 
 ## 7.1 Docker Compose (Development & Staging)
 Semua service dijalankan via single docker-compose.yml agar reprodusibel di mesin mana pun:
-* Service: nats (JetStream enabled), postgres (+ TimescaleDB), redis, go-gateway, python-simulator, python-ai-worker, laravel-app, prometheus, grafana.
+* Service: nats (JetStream enabled), postgres (+ TimescaleDB), redis, go-gateway, python-simulator, python-ai-worker, sveltekit-app, prometheus, grafana.
 * Named volumes untuk PostgreSQL dan NATS data agar data persisten saat restart.
 * Internal network bridge: semua service berkomunikasi via nama service (e.g., nats:4222, postgres:5432), tidak via IP.
 * Environment variables di-inject via .env file yang tidak di-commit.
@@ -187,7 +184,7 @@ Semua service dijalankan via single docker-compose.yml agar reprodusibel di mesi
 Sediakan Makefile di root project untuk mempermudah operasional:
 * make up: jalankan seluruh stack (docker compose up -d)
 * make down: hentikan semua service
-* make migrate: jalankan database migration Laravel
+* make migrate: jalankan database migration (mis. via Drizzle ORM atau node-pg-migrate)
 * make proto: kompilasi semua file .proto menjadi kode Go dan Python
 * make logs: tampilkan log dari semua service secara real-time
 * make test: jalankan semua test suite
@@ -196,8 +193,8 @@ Sediakan Makefile di root project untuk mempermudah operasional:
 Tiga workflow utama:
 
 ### Workflow 1: PR Validation (trigger: pull_request)
-* Lint: golangci-lint untuk Go, ruff + mypy untuk Python, phpstan untuk Laravel.
-* Unit Tests: go test ./... untuk Go, pytest untuk Python, php artisan test untuk Laravel.
+* Lint: golangci-lint untuk Go, ruff + mypy untuk Python, eslint + svelte-check untuk SvelteKit.
+* Unit Tests: go test ./... untuk Go, pytest untuk Python, vitest untuk SvelteKit.
 * Protobuf Validation: cek konsistensi .proto file antara Go dan Python generator.
 * Build Check: docker compose build untuk memastikan semua image berhasil dibangun.
 
@@ -214,7 +211,7 @@ Tiga workflow utama:
 
 | Environment | Tujuan | Data | AI Model |
 |---|---|---|---|
-| Development (lokal) | Coding & debugging | Simulated (Python script) | Ollama lokal (Gemma-3 4B) |
+| Development (lokal) | Coding & debugging | Simulated (Python script) | Ollama lokal (Gemma-4 31B) |
 | Staging | Testing integrasi & demo | Simulated dengan skenario lengkap | Ollama di server staging |
 | Production (opsional) | Live demo / portofolio | Simulated (tidak ada data real) | Sama dengan staging |
 
@@ -225,10 +222,10 @@ Tiga workflow utama:
 ## 8.1 Unit Tests
 * Go: test fungsi anomaly detection (apakah threshold >3% terdeteksi benar), debouncing logic, dan Protobuf serialization.
 * Python AI Worker: test setiap state LangGraph secara terpisah dengan mock LLM response. Test Pydantic validation untuk output AI.
-* Laravel: test Sanctum authentication flow, feedback submission endpoint, dan data historis query.
+* SvelteKit: test alur autentikasi (Lucia/JWT), endpoint feedback submission, dan data historis query (via vitest).
 
 ## 8.2 Integration Tests
-* End-to-end flow test: Python Simulator menembak anomali → Go mendeteksi → AI Worker memproses → hasil muncul di response API Laravel.
+* End-to-end flow test: Python Simulator menembak anomali → Go mendeteksi → AI Worker memproses → hasil muncul di response API SvelteKit.
 * Gunakan Docker Compose test environment dengan database dan NATS yang terisolasi.
 * Test scenario: normal market (tidak ada alert), anomali tunggal, burst anomali (10 emiten dalam 1 menit).
 
@@ -285,6 +282,8 @@ Berikut adalah penilaian plan versi revisi ini berdasarkan delapan dimensi:
 **Skor Keseluruhan (Versi Revisi): 89 / 100**
 
 > *Sisa 11 poin mencerminkan kompleksitas implementasi nyata yang hanya bisa diverifikasi saat koding berlangsung: apakah Ollama lokal cukup cepat untuk latency <15 detik, apakah LangGraph state machine bisa di-debug dengan mudah, dan apakah NATS JetStream stabil di environment lokal Docker.*
+>
+> *Catatan revisi: frontend diganti dari Laravel TALL Stack ke SvelteKit untuk mengeksplorasi stack baru dengan overhead runtime lebih ringan (compiler-based, tanpa Virtual DOM) dibanding alternatif seperti Next.js. Perubahan ini bersifat netral terhadap skor — bukan perbaikan kualitas plan, melainkan pertukaran teknologi yang tetap mempertahankan kelengkapan fitur (autentikasi, real-time rendering, Human-in-the-Loop) di bagian yang relevan.*
 
 ---
 
@@ -308,7 +307,7 @@ Monorepo dengan struktur berikut:
   * /simulator — Python data generator (uv project)
   * /gateway — Go service (API Gateway + WebSocket + Anomaly Detector)
   * /ai-worker — Python AI Engine (uv project, LangGraph, Ollama)
-  * /dashboard — Laravel TALL stack application
+  * /dashboard — SvelteKit application
   * /infra — Konfigurasi NATS, Prometheus, Grafana
   * /.github/workflows — CI/CD pipeline (GitHub Actions)
 
@@ -337,7 +336,7 @@ Sebagian besar perubahan bersifat aditif. Berikut klasifikasinya:
 * Container Airflow baru di docker-compose.yml.
 * Folder /etl baru berisi DAG Python, terpisah dari codebase AI worker dan gateway.
 * Tabel warehouse baru — tidak mengubah skema stock_prices, anomaly_events, atau ai_analyses yang sudah ada.
-* Halaman dashboard analitik historis baru (route + Livewire component baru).
+* Halaman dashboard analitik historis baru (route + komponen Svelte baru).
 
 **Modifikasi ringan (aditif terhadap kode existing)**
 * AI Worker: opsional menambah satu state baru di LangGraph untuk membaca tabel technical_indicators sebagai konteks tambahan sebelum reasoning ke LLM. Sistem tetap berfungsi penuh tanpa perubahan ini.
@@ -361,10 +360,3 @@ Fase 4 baru layak dimulai jika seluruh kondisi berikut terpenuhi:
 3. Tersedia waktu dan resource tambahan (waktu liburan masih cukup, atau dilanjutkan di luar masa liburan sebagai proyek iteratif).
 
 > *Estimasi effort Fase 4 jauh lebih ringan dibanding Fase 1–3 karena tidak ada pembangunan ulang — murni menambah satu layer baru di atas fondasi yang sudah ada.*
-
----
-
-# Penutup
-Plan versi revisi ini telah mengintegrasikan rekomendasi dari review awal mencakup pembagian scope ke tiga fase MVP, definisi kontrak data Protobuf yang eksplisit, strategi keamanan berlapis, observability dengan Prometheus + Grafana, testing strategy yang terstruktur, dan CI/CD pipeline berbasis GitHub Actions. Fase 4 (ETL) disertakan sebagai referensi opsional untuk dipertimbangkan setelah Fase 1–3 tuntas.
-
-*Jika Fase 1 dan Fase 2 berhasil diselesaikan, EquiSentinel akan menjadi salah satu portofolio paling komprehensif yang mendemonstrasikan kemampuan sistem terdistribusi, event-driven architecture, dan AI integration secara bersamaan.*
