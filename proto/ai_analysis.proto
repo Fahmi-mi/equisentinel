@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package proto;
+
+enum Sentiment {
+  SENTIMENT_UNSPECIFIED = 0;
+  SENTIMENT_BULLISH = 1;
+  SENTIMENT_BEARISH = 2;
+  SENTIMENT_NEUTRAL = 3;
+}
+
+enum RiskLevel {
+  RISK_LEVEL_UNSPECIFIED = 0;
+  RISK_LEVEL_LOW = 1;
+  RISK_LEVEL_MEDIUM = 2;
+  RISK_LEVEL_HIGH = 3;
+}
+
+message AiAnalysis {
+  string correlation_id = 1;
+  string ticker = 2;
+  string summary = 3;
+  Sentiment sentiment = 4;
+  RiskLevel risk_level = 5;
+  string model_used = 6;
+  int32 latency_ms = 7;
+}
