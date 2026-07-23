@@ -1,0 +1,21 @@
+[project]
+name = "simulator"
+version = "0.1.0"
+description = "Add your description here"
+authors = [
+    { name = "Fahmi Haqqul Ihsan", email = "fahmihaqqulihsan@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "nats-py>=2.15.0",
+    "numpy>=2.5.1",
+    "python-dotenv>=1.2.2",
+    "pyyaml>=6.0.3",
+    "structlog>=26.1.0",
+]
+
+[dependency-groups]
+dev = [
+    "grpcio-tools>=1.83.0",
+    "pytest>=9.1.1",
+]
