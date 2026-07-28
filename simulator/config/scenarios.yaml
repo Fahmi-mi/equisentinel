@@ -1,0 +1,30 @@
+# Skenario anomali terjadwal. Waktu diukur dalam detik wall-clock sejak simulator start
+# (bukan waktu pasar), supaya reproducible terlepas dari CANDLE_INTERVAL_SECONDS yang dipakai.
+#
+# type: price_move    -> menggeser drift ticker menuju magnitude_pct total selama duration_seconds
+# type: volume_spike   -> mengalikan avg_volume ticker dengan volume_multiplier selama duration_seconds
+scenarios:
+  - ticker: GOTO
+    type: price_move
+    magnitude_pct: -7
+    trigger_at_seconds: 30
+    duration_seconds: 30
+    news:
+      headline: "GOTO Anjlok Tajam Usai Kabar Divestasi Investor Asing"
+      source: "Simulated Wire"
+
+  - ticker: TLKM
+    type: volume_spike
+    volume_multiplier: 10
+    trigger_at_seconds: 90
+    duration_seconds: 20
+    news:
+      headline: "Volume Transaksi TLKM Melonjak di Tengah Rumor Akuisisi"
+      source: "Simulated Wire"
+
+  - ticker: BBCA
+    type: price_move
+    magnitude_pct: 5
+    trigger_at_seconds: 150
+    duration_seconds: 40
+    news: null

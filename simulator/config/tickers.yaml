@@ -1,0 +1,33 @@
+# Emiten BEI yang disimulasikan.
+# volatility & drift adalah parameter GBM PER TICK (bukan tahunan) -
+# angka kecil karena tiap candle terdiri dari beberapa tick (lihat TICKS_PER_CANDLE).
+tickers:
+  - ticker: BBCA
+    base_price: 9500
+    volatility: 0.0008
+    drift: 0.00005
+    avg_volume: 800000
+
+  - ticker: BBRI
+    base_price: 4800
+    volatility: 0.0010
+    drift: 0.00006
+    avg_volume: 1500000
+
+  - ticker: TLKM
+    base_price: 3200
+    volatility: 0.0012
+    drift: 0.00008
+    avg_volume: 3000000
+
+  - ticker: ASII
+    base_price: 5200
+    volatility: 0.0009
+    drift: 0.00004
+    avg_volume: 900000
+
+  - ticker: GOTO
+    base_price: 65
+    volatility: 0.0030
+    drift: -0.00010
+    avg_volume: 50000000
