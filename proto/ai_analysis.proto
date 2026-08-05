@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package proto;
 
+option go_package = "github.com/Fahmi-mi/equisentinel/gateway/proto;proto";
+
 enum Sentiment {
   SENTIMENT_UNSPECIFIED = 0;
   SENTIMENT_BULLISH = 1;

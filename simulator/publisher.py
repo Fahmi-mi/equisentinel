@@ -6,7 +6,7 @@ from typing import Optional
 import structlog
 from nats.aio.client import Client as NATS
 from nats.js.client import JetStreamContext
-from nats.js.errors import BadRequestError
+from nats.js.errors import NotFoundError
 
 from config import SimulatorSettings
 from generator import Candle
@@ -18,6 +18,7 @@ QUOTES_STREAM = "STOCK_QUOTES"
 QUOTES_SUBJECT_PREFIX = "stock.quotes"
 NEWS_STREAM = "STOCK_NEWS"
 NEWS_SUBJECT_PREFIX = "stock.news"
+STREAM_MAX_AGE_SECONDS = 24 * 60 * 60
 
 
 class Publisher:
@@ -36,9 +37,12 @@ class Publisher:
 
     async def _ensure_stream(self, name: str, subject: str) -> None:
         try:
-            await self._js.add_stream(name=name, subjects=[subject])
-        except BadRequestError:
+            await self._js.stream_info(name)
             log.debug("stream_already_exists", name=name)
+        except NotFoundError:
+            await self._js.add_stream(
+                name=name, subjects=[subject], max_age=STREAM_MAX_AGE_SECONDS
+            )
 
     async def close(self) -> None:
         if self._nc is not None:
