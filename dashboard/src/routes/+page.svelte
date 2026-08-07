@@ -57,14 +57,14 @@
 		{/each}
 	</nav>
 
-	<section class="glass-panel flex flex-1 flex-col gap-4 rounded-2xl p-6">
+	<section class="glass-panel flex flex-col gap-4 rounded-2xl p-6">
 		<div class="flex items-baseline justify-between">
 			<h2 class="text-2xl font-semibold">{activeTicker}</h2>
 			{#if latestQuote}
 				<span class="font-mono text-xl">{latestQuote.close.toLocaleString('id-ID')}</span>
 			{/if}
 		</div>
-		<div class="h-[420px]">
+		<div class="h-[280px] sm:h-[320px]">
 			<CandlestickChart ticker={activeTicker} />
 		</div>
 	</section>
