@@ -73,13 +73,13 @@ Database utama untuk semua data persisten.
 
 > *Gunakan TimescaleDB extension untuk tabel time-series (stock_prices) agar query historis jauh lebih cepat.*
 
-## 3.5 AI Engine — Python + LangGraph + Ollama
+## 3.5 AI Engine — Python + LangGraph + DeepSeek API
 * Python 3.12 dengan uv virtual environment.
 * LangGraph sebagai orkestrator state machine Agen AI (bukan sequential chain).
-* LangChain untuk tool integration: NATS consumer, PostgreSQL query, dan Ollama LLM call.
-* Ollama (lokal): menjalankan model Gemma-4 31B secara lokal. Tidak memerlukan API key dan cocok untuk pengembangan offline.
+* LangChain untuk tool integration: NATS consumer, PostgreSQL query, dan DeepSeek API call.
+* DeepSeek API (mis. model `deepseek-chat`): LLM reasoning dilakukan via REST API, bukan hosting lokal. Memerlukan API key dan koneksi internet — pengembangan offline tidak lagi memungkinkan, namun tidak butuh GPU/RAM besar untuk hosting model sendiri.
 * LangSmith: monitoring log pemikiran agen, latensi per state, token usage, dan alur keputusan.
-* Sentiment Caching: hasil analisis per emiten disimpan dalam Redis (TTL 5 menit) untuk menghindari API call berulang.
+* Sentiment Caching: hasil analisis per emiten disimpan dalam Redis (TTL 5 menit) untuk menghindari API call berulang — penting untuk performa maupun untuk menekan biaya panggilan API.
 
 ## 3.6 Frontend — SvelteKit
 * SvelteKit (Node.js runtime standar): framework compiler-based, tanpa Virtual DOM, sehingga bundle size lebih kecil dan overhead runtime jauh lebih rendah dibanding framework berbasis React seperti Next.js.
@@ -97,7 +97,7 @@ Database utama untuk semua data persisten.
 Sistem beroperasi dalam pola event-driven yang terdiri dari empat tahap:
 1. Ingestion: Python Simulator → NATS (stock.quotes, stock.news)
 2. Routing: Go Service → WebSocket (visual) + NATS stock.anomaly (analitik)
-3. AI Analysis: Python Worker (LangGraph) → Ollama → hasil ke NATS stock.results
+3. AI Analysis: Python Worker (LangGraph) → DeepSeek API → hasil ke NATS stock.results
 4. Reporting: Go Service → SvelteKit Dashboard via WebSocket + simpan ke PostgreSQL
 
 ## 4.2 Definisi Kontrak Data (Protobuf)
@@ -111,7 +111,7 @@ Semua komunikasi antar-service menggunakan skema Protobuf yang terdefinisi:
 Worker Python mengeksekusi state machine berikut untuk setiap AnomalyEvent:
 * State 1 — Technical Check: Membaca metrik anomali (price_change_pct, volume_ratio). Jika data tidak cukup signifikan (edge case), langsung ke State 4 dengan default analysis.
 * State 2 — Context Retrieval (RAG): Query PostgreSQL untuk berita terkait ticker dalam window 30 menit terakhir. Fallback ke NATS stock.news stream jika database belum punya data terbaru.
-* State 3 — LLM Reasoning: Prompt ke Ollama dengan konteks teknikal + berita. Template prompt: "Saham {ticker} bergerak {price_change_pct}% dalam {duration}. Berita terkait: {news_context}. Analisis sentimen dan berikan risk level (LOW/MEDIUM/HIGH) beserta alasan singkat."
+* State 3 — LLM Reasoning: Prompt ke DeepSeek API dengan konteks teknikal + berita. Template prompt: "Saham {ticker} bergerak {price_change_pct}% dalam {duration}. Berita terkait: {news_context}. Analisis sentimen dan berikan risk level (LOW/MEDIUM/HIGH) beserta alasan singkat."
 * State 4 — Structured Output: LLM mengembalikan JSON terstruktur sesuai skema AIAnalysis. Validasi dengan Pydantic sebelum dikirim ke NATS stock.results.
 
 ---
@@ -143,6 +143,7 @@ Keamanan dirancang berlapis (defense-in-depth) di setiap layer sistem:
 | Database Password | .env lokal | Environment variable di server / Docker secret |
 | NATS Credentials | nats.creds file lokal | Docker secret / K8s secret |
 | Auth Secret (Lucia/JWT) | .env lokal (`openssl rand -base64 32`) | Set manual di server, rotasi berkala |
+| DeepSeek API Key | .env lokal | Environment variable di server / Docker secret |
 | LangSmith API Key | .env lokal | Environment variable di server |
 
 ---
@@ -165,7 +166,7 @@ Keamanan dirancang berlapis (defense-in-depth) di setiap layer sistem:
 
 ## 6.3 Health Checks
 * Go Service: endpoint GET /health mengembalikan status koneksi NATS dan jumlah WebSocket aktif.
-* Python Worker: endpoint GET /health mengembalikan status koneksi NATS, status Ollama, dan queue depth.
+* Python Worker: endpoint GET /health mengembalikan status koneksi NATS, status konektivitas DeepSeek API, dan queue depth.
 * SvelteKit: endpoint `/api/health` (route handler) untuk cek koneksi PostgreSQL, Redis, dan storage.
 * Docker Compose healthcheck: setiap service memiliki healthcheck definition agar Docker tahu kapan service siap.
 
@@ -211,8 +212,8 @@ Tiga workflow utama:
 
 | Environment | Tujuan | Data | AI Model |
 |---|---|---|---|
-| Development (lokal) | Coding & debugging | Simulated (Python script) | Ollama lokal (Gemma-4 31B) |
-| Staging | Testing integrasi & demo | Simulated dengan skenario lengkap | Ollama di server staging |
+| Development (lokal) | Coding & debugging | Simulated (Python script) | DeepSeek API (`deepseek-chat`) |
+| Staging | Testing integrasi & demo | Simulated dengan skenario lengkap | DeepSeek API (`deepseek-chat`) |
 | Production (opsional) | Live demo / portofolio | Simulated (tidak ada data real) | Sama dengan staging |
 
 ---
@@ -231,7 +232,7 @@ Tiga workflow utama:
 
 ## 8.3 Performance Tests
 * Gunakan k6 untuk load testing WebSocket endpoint Go: simulasikan 100 concurrent client menerima data real-time.
-* Ukur AI Worker throughput: berapa banyak analisis yang bisa diproses per menit dengan model Ollama lokal.
+* Ukur AI Worker throughput: berapa banyak analisis yang bisa diproses per menit dengan DeepSeek API, termasuk dampak rate limit dari sisi provider.
 * Target: anomali terdeteksi dan analisis AI tersedia di dashboard dalam <15 detik dari terjadinya event.
 
 ---
@@ -247,7 +248,7 @@ NATS JetStream consumer group pada AI worker dengan MaxAckPending=10 memastikan 
 ## 9.3 LLM Optimization
 * Adaptive Sampling: jika queue stock.anomaly >50 pesan, Go mengirim prompt yang lebih ringkas (compressed context) ke AI worker.
 * Sentiment Caching (Redis): hasil analisis per ticker di-cache selama 5 menit. Anomali baru untuk ticker yang sama dalam window tersebut menggunakan hasil cache, menghemat LLM call.
-* Model Fallback: jika Ollama timeout >10 detik, AI worker mengembalikan analisis default ("Data tidak cukup untuk analisis, pantau secara manual") agar sistem tidak blocking.
+* Model Fallback: jika DeepSeek API timeout >10 detik atau gagal (rate limit/downtime), AI worker mengembalikan analisis default ("Data tidak cukup untuk analisis, pantau secara manual") agar sistem tidak blocking.
 
 ## 9.4 State Sync via Correlation ID
 Setiap AnomalyEvent memiliki correlation_id (UUID v4) yang dibuat oleh Go service. ID ini mengalir melalui semua tahap — dari anomaly detection hingga hasil AI di dashboard — sehingga setiap komponen visual di browser dapat dikorelasikan dengan data teknikal dan hasil analisis yang tepat.
@@ -271,7 +272,7 @@ Berikut adalah penilaian plan versi revisi ini berdasarkan delapan dimensi:
 | Dimensi | Skor Lama | Skor Baru | Keterangan |
 |---|---|---|---|
 | Arsitektur sistem | 90 | 92 | Alur Go → AI → Dashboard kini terdefinisi lengkap |
-| Kelengkapan stack | 85 | 90 | Klarifikasi Ollama lokal, tambah Redis & TimescaleDB |
+| Kelengkapan stack | 85 | 90 | Klarifikasi DeepSeek API sebagai LLM provider, tambah Redis & TimescaleDB |
 | Skalabilitas & stabilitas | 88 | 91 | Adaptive sampling & model fallback ditambahkan |
 | Realisme scope (Phased MVP) | 55 | 80 | Pembagian 3 fase membuat scope jauh lebih terkelola |
 | Dokumentasi & alur | 85 | 93 | Kontrak data Protobuf & state machine LangGraph terinci |
@@ -281,7 +282,7 @@ Berikut adalah penilaian plan versi revisi ini berdasarkan delapan dimensi:
 
 **Skor Keseluruhan (Versi Revisi): 89 / 100**
 
-> *Sisa 11 poin mencerminkan kompleksitas implementasi nyata yang hanya bisa diverifikasi saat koding berlangsung: apakah Ollama lokal cukup cepat untuk latency <15 detik, apakah LangGraph state machine bisa di-debug dengan mudah, dan apakah NATS JetStream stabil di environment lokal Docker.*
+> *Sisa 11 poin mencerminkan kompleksitas implementasi nyata yang hanya bisa diverifikasi saat koding berlangsung: apakah DeepSeek API cukup cepat dan stabil (dari sisi latency maupun rate limit) untuk target <15 detik, apakah LangGraph state machine bisa di-debug dengan mudah, dan apakah NATS JetStream stabil di environment lokal Docker.*
 >
 > *Catatan revisi: frontend diganti dari Laravel TALL Stack ke SvelteKit untuk mengeksplorasi stack baru dengan overhead runtime lebih ringan (compiler-based, tanpa Virtual DOM) dibanding alternatif seperti Next.js. Perubahan ini bersifat netral terhadap skor — bukan perbaikan kualitas plan, melainkan pertukaran teknologi yang tetap mempertahankan kelengkapan fitur (autentikasi, real-time rendering, Human-in-the-Loop) di bagian yang relevan.*
 
@@ -291,7 +292,9 @@ Berikut adalah penilaian plan versi revisi ini berdasarkan delapan dimensi:
 
 | Risiko | Probabilitas | Dampak | Mitigasi |
 |---|---|---|---|
-| Ollama terlalu lambat (>15 detik per analisis) | Sedang | Tinggi | Gunakan model lebih kecil (Gemma-3 1B) atau beralih ke Gemini API |
+| DeepSeek API lambat/timeout (>15 detik per analisis) | Sedang | Tinggi | Gunakan model DeepSeek yang lebih ringan, atau siapkan provider API cadangan (mis. Gemini API) sebagai fallback |
+| Rate limit / downtime DeepSeek API mengganggu ketersediaan AI worker | Rendah | Sedang | Retry dengan exponential backoff, circuit breaker, dan fallback ke analisis default (State 4) agar sistem tidak blocking |
+| Biaya panggilan API membengkak seiring volume anomali | Rendah | Sedang | Sentiment Caching (Redis, TTL 5 menit) dan debouncing 30 detik di Go gateway menekan jumlah panggilan API berulang |
 | Scope creep: fitur bertambah sebelum Fase 1 selesai | Tinggi | Tinggi | Freeze fitur per fase; buat backlog dan tolak penambahan sampai fase selesai |
 | NATS JetStream sulit dikonfigurasi lokal | Rendah | Sedang | Gunakan official NATS Docker image dengan config file minimal yang sudah terdokumentasi |
 | LangGraph state machine sulit di-debug | Sedang | Sedang | Aktifkan LangSmith dari hari pertama; log setiap state transition |
@@ -306,7 +309,7 @@ Monorepo dengan struktur berikut:
   * /proto — Definisi .proto untuk semua kontrak data
   * /simulator — Python data generator (uv project)
   * /gateway — Go service (API Gateway + WebSocket + Anomaly Detector)
-  * /ai-worker — Python AI Engine (uv project, LangGraph, Ollama)
+  * /ai-worker — Python AI Engine (uv project, LangGraph, DeepSeek API)
   * /dashboard — SvelteKit application
   * /infra — Konfigurasi NATS, Prometheus, Grafana
   * /.github/workflows — CI/CD pipeline (GitHub Actions)

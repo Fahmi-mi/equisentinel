@@ -57,7 +57,7 @@ func (h *Hub) Broadcast(data []byte) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	for conn := range h.clients {
-		conn.WriteMessage(websocket.BinaryMessage, data)
+		conn.WriteMessage(websocket.TextMessage, data)
 	}
 }
 
