@@ -29,5 +29,13 @@ services:
       timeout: 3s
       retries: 5
 
+  simulator:
+    build: ./simulator
+    environment:
+      NATS_URL: nats://nats:4222
+    depends_on:
+      nats:
+        condition: service_healthy
+
 volumes:
   nats_data:
