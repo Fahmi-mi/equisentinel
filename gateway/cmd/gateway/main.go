@@ -12,6 +12,7 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -31,6 +32,8 @@ const (
 	anomalyCriticalSubj = "stock.anomaly.critical"
 	streamMaxAge        = 24 * time.Hour
 )
+
+var quoteJSONMarshaler = protojson.MarshalOptions{EmitUnpopulated: true}
 
 func main() {
 	zerolog.TimeFieldFormat = time.RFC3339
@@ -97,7 +100,12 @@ func handleQuote(msg *nats.Msg, hub *ws.Hub, detector *anomaly.Detector, debounc
 		return
 	}
 
-	hub.Broadcast(msg.Data)
+	quoteJSON, err := quoteJSONMarshaler.Marshal(&quote)
+	if err != nil {
+		log.Error().Err(err).Msg("quote_marshal_json_failed")
+	} else {
+		hub.Broadcast(quoteJSON)
+	}
 
 	results := detector.Evaluate(anomaly.Quote{
 		Ticker:    quote.Ticker,
