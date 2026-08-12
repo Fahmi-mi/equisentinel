@@ -35,7 +35,10 @@ export class GatewaySocket {
 				if (message.type === 'quote') {
 					quoteStore.add(message.quote);
 				} else {
-					analysisStore.set(message.analysis);
+					const { analysis } = message;
+					const time =
+						quoteStore.latest(analysis.ticker).at(-1)?.time ?? Math.floor(Date.now() / 1000);
+					analysisStore.add({ ...analysis, time });
 				}
 			} catch (err) {
 				console.error('failed to parse gateway message', err);

@@ -1,14 +1,27 @@
 import type { AIAnalysis } from '$lib/ws/parse';
 
-export class AnalysisStore {
-	private latestByTicker = $state<Record<string, AIAnalysis>>({});
+export interface TimedAnalysis extends AIAnalysis {
+	time: number;
+}
 
-	set(analysis: AIAnalysis) {
-		this.latestByTicker[analysis.ticker] = analysis;
+export const MAX_HISTORY = 200;
+
+export class AnalysisStore {
+	private byTicker = $state<Record<string, TimedAnalysis[]>>({});
+
+	add(analysis: TimedAnalysis) {
+		const existing = this.byTicker[analysis.ticker] ?? [];
+		const next = [...existing, analysis];
+		this.byTicker[analysis.ticker] =
+			next.length > MAX_HISTORY ? next.slice(next.length - MAX_HISTORY) : next;
 	}
 
-	latest(ticker: string): AIAnalysis | undefined {
-		return this.latestByTicker[ticker];
+	latest(ticker: string): TimedAnalysis | undefined {
+		return this.byTicker[ticker]?.at(-1);
+	}
+
+	history(ticker: string): TimedAnalysis[] {
+		return this.byTicker[ticker] ?? [];
 	}
 }
 

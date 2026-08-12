@@ -45,9 +45,19 @@ proto-go:
 
 .PHONY: migrate
 migrate:
+	@docker compose exec -T postgres psql -U $(POSTGRES_USER) -d $(POSTGRES_DB) -c \
+		"CREATE TABLE IF NOT EXISTS schema_migrations (filename TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now());" > /dev/null
 	@for f in $(MIGRATIONS_DIR)/*.sql; do \
+		name=$$(basename $$f); \
+		applied=$$(docker compose exec -T postgres psql -U $(POSTGRES_USER) -d $(POSTGRES_DB) -tAc "SELECT 1 FROM schema_migrations WHERE filename = '$$name'"); \
+		if [ "$$applied" = "1" ]; then \
+			echo "skipping $$f (already applied)"; \
+			continue; \
+		fi; \
 		echo "applying $$f"; \
 		docker compose exec -T postgres psql -U $(POSTGRES_USER) -d $(POSTGRES_DB) < $$f; \
+		docker compose exec -T postgres psql -U $(POSTGRES_USER) -d $(POSTGRES_DB) -c \
+			"INSERT INTO schema_migrations (filename) VALUES ('$$name')" > /dev/null; \
 	done
 
 .PHONY: up

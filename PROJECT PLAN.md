@@ -34,9 +34,9 @@ Mengingat kompleksitas sistem, pengerjaan dibagi menjadi 3 fase bertahap agar pr
 
 | Fase | Durasi | Deliverable Utama | Status |
 |---|---|---|---|
-| Fase 1 — Fondasi | Minggu 1–3 | Simulator + NATS + Go WebSocket + Dashboard basic (grafik live) | Target awal |
-| Fase 2 — AI Core | Minggu 4–6 | Python AI Worker + LangGraph state machine + notifikasi anomali | Setelah Fase 1 selesai |
-| Fase 3 — Polish | Minggu 7+ | Human-in-the-Loop feedback, historis PostgreSQL, LangSmith monitoring | Iterasi |
+| Fase 1 — Fondasi | Minggu 1–3 | Simulator + NATS + Go WebSocket + Dashboard basic (grafik live) | Selesai |
+| Fase 2 — AI Core | Minggu 4–6 | Python AI Worker + LangGraph state machine + notifikasi anomali | Selesai |
+| Fase 3 — Polish | Minggu 7+ | Human-in-the-Loop feedback, historis PostgreSQL, LangSmith monitoring | Berikutnya |
 
 ---
 
