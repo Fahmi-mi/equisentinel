@@ -75,9 +75,11 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-equisentinel}:${POSTGRES_PASSWORD:-equisentinel}@postgres:5432/${POSTGRES_DB:-equisentinel}
       REDIS_URL: redis://redis:6379
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
       LANGSMITH_API_KEY: ${LANGSMITH_API_KEY:-}
       LANGSMITH_TRACING: ${LANGSMITH_TRACING:-false}
       LANGSMITH_PROJECT: ${LANGSMITH_PROJECT:-equisentinel}
+      AI_WORKER_HTTP_PORT: ${AI_WORKER_HTTP_PORT:-8081}
     depends_on:
       nats:
         condition: service_healthy
@@ -85,6 +87,12 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:${AI_WORKER_HTTP_PORT:-8081}/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    stop_grace_period: 30s
 
 volumes:
   nats_data:
