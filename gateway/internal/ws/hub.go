@@ -2,27 +2,44 @@ package ws
 
 import (
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/gorilla/websocket"
 	"github.com/rs/zerolog/log"
 )
 
-var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true },
-}
-
 type Hub struct {
-	mu      sync.RWMutex
-	clients map[*websocket.Conn]struct{}
+	mu       sync.RWMutex
+	clients  map[*websocket.Conn]struct{}
+	upgrader websocket.Upgrader
 }
 
-func NewHub() *Hub {
-	return &Hub{clients: make(map[*websocket.Conn]struct{})}
+func NewHub(allowedOrigins []string) *Hub {
+	originSet := make(map[string]struct{}, len(allowedOrigins))
+	for _, o := range allowedOrigins {
+		if o = strings.TrimSpace(o); o != "" {
+			originSet[o] = struct{}{}
+		}
+	}
+
+	return &Hub{
+		clients: make(map[*websocket.Conn]struct{}),
+		upgrader: websocket.Upgrader{
+			CheckOrigin: func(r *http.Request) bool {
+				origin := r.Header.Get("Origin")
+				if origin == "" {
+					return true
+				}
+				_, ok := originSet[origin]
+				return ok
+			},
+		},
+	}
 }
 
 func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) error {
-	conn, err := upgrader.Upgrade(w, r, nil)
+	conn, err := h.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return err
 	}

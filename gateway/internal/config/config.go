@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"strconv"
+	"strings"
 )
 
 type Config struct {
@@ -13,6 +14,7 @@ type Config struct {
 	VolumeRatioThreshold    float64
 	CriticalPriceChangePct  float64
 	DebounceWindowSeconds   int
+	AllowedOrigins          []string
 }
 
 func Load() Config {
@@ -24,6 +26,7 @@ func Load() Config {
 		VolumeRatioThreshold:    getEnvFloat("VOLUME_RATIO_THRESHOLD", 5.0),
 		CriticalPriceChangePct:  getEnvFloat("CRITICAL_PRICE_CHANGE_PCT", 5.0),
 		DebounceWindowSeconds:   getEnvInt("DEBOUNCE_WINDOW_SECONDS", 30),
+		AllowedOrigins:          strings.Split(getEnv("ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:4173"), ","),
 	}
 }
 

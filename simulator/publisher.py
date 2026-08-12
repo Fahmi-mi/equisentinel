@@ -45,8 +45,17 @@ class Publisher:
             )
 
     async def close(self) -> None:
-        if self._nc is not None:
+        if self._nc is None:
+            return
+        try:
             await self._nc.drain()
+        except Exception:
+            log.warning("nats_drain_failed", exc_info=True)
+            await self._nc.close()
+
+    @property
+    def is_connected(self) -> bool:
+        return self._nc is not None and self._nc.is_connected
 
     async def publish_candle(self, candle: Candle) -> None:
         msg = stock_quote_pb2.StockQuote(

@@ -37,6 +37,9 @@ const (
 	resultsStream       = "STOCK_RESULTS"
 	resultsSubject      = "stock.results"
 	resultsConsumer     = "gateway-results"
+	newsStream          = "STOCK_NEWS"
+	newsSubject         = "stock.news.*"
+	newsConsumer        = "gateway-news"
 	streamMaxAge        = 24 * time.Hour
 )
 
@@ -74,14 +77,17 @@ func main() {
 	if err := nc.EnsureStream(resultsStream, []string{resultsSubject}, streamMaxAge); err != nil {
 		log.Fatal().Err(err).Msg("ensure_results_stream_failed")
 	}
+	if err := nc.EnsureStream(newsStream, []string{newsSubject}, streamMaxAge); err != nil {
+		log.Fatal().Err(err).Msg("ensure_news_stream_failed")
+	}
 
-	hub := ws.NewHub()
+	hub := ws.NewHub(cfg.AllowedOrigins)
 	detector := anomaly.NewDetector(cfg.PriceChangePctThreshold, cfg.VolumeRatioThreshold, cfg.CriticalPriceChangePct)
 	debouncer := anomaly.NewDebouncer(time.Duration(cfg.DebounceWindowSeconds) * time.Second)
 
 	js := nc.JetStream()
 	sub, err := js.Subscribe(quotesSubject, func(msg *nats.Msg) {
-		handleQuote(msg, hub, detector, debouncer, js)
+		handleQuote(msg, hub, detector, debouncer, js, pg)
 	}, nats.Durable(quotesConsumer), nats.ManualAck())
 	if err != nil {
 		log.Fatal().Err(err).Msg("subscribe_quotes_failed")
@@ -95,6 +101,14 @@ func main() {
 		log.Fatal().Err(err).Msg("subscribe_results_failed")
 	}
 	defer resultsSub.Unsubscribe()
+
+	newsSub, err := js.Subscribe(newsSubject, func(msg *nats.Msg) {
+		handleNewsArticle(msg, pg)
+	}, nats.Durable(newsConsumer), nats.ManualAck())
+	if err != nil {
+		log.Fatal().Err(err).Msg("subscribe_news_failed")
+	}
+	defer newsSub.Unsubscribe()
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
@@ -125,7 +139,7 @@ func main() {
 	srv.Shutdown(ctx)
 }
 
-func handleQuote(msg *nats.Msg, hub *ws.Hub, detector *anomaly.Detector, debouncer *anomaly.Debouncer, js nats.JetStreamContext) {
+func handleQuote(msg *nats.Msg, hub *ws.Hub, detector *anomaly.Detector, debouncer *anomaly.Debouncer, js nats.JetStreamContext, pg *postgres.Client) {
 	defer msg.Ack()
 
 	var quote pb.StockQuote
@@ -155,11 +169,11 @@ func handleQuote(msg *nats.Msg, hub *ws.Hub, detector *anomaly.Detector, debounc
 		if !debouncer.Allow(key, r.DetectedAt) {
 			continue
 		}
-		publishAnomaly(js, r)
+		publishAnomaly(js, pg, r)
 	}
 }
 
-func publishAnomaly(js nats.JetStreamContext, r anomaly.Result) {
+func publishAnomaly(js nats.JetStreamContext, pg *postgres.Client, r anomaly.Result) {
 	event := &pb.AnomalyEvent{
 		CorrelationId:  uuid.NewString(),
 		Ticker:         r.Ticker,
@@ -185,12 +199,46 @@ func publishAnomaly(js nats.JetStreamContext, r anomaly.Result) {
 		return
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := pg.InsertAnomalyEvent(
+		ctx, event.CorrelationId, event.Ticker, event.TriggerType,
+		event.PriceChangePct, event.VolumeRatio, r.Critical, r.DetectedAt,
+	); err != nil {
+		log.Error().Err(err).Msg("anomaly_persist_failed")
+	}
+
 	log.Info().
 		Str("correlation_id", event.CorrelationId).
 		Str("ticker", event.Ticker).
 		Str("trigger_type", event.TriggerType).
 		Bool("critical", r.Critical).
 		Msg("anomaly_detected")
+}
+
+func handleNewsArticle(msg *nats.Msg, pg *postgres.Client) {
+	defer msg.Ack()
+
+	var article pb.NewsArticle
+	if err := proto.Unmarshal(msg.Data, &article); err != nil {
+		log.Error().Err(err).Msg("news_unmarshal_failed")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := pg.InsertNewsArticle(
+		ctx, article.Id, article.Ticker, article.Headline, article.Body, article.Source,
+		article.PublishedAt.AsTime(),
+	); err != nil {
+		log.Error().Err(err).Msg("news_persist_failed")
+		return
+	}
+
+	log.Info().
+		Str("ticker", article.Ticker).
+		Str("headline", article.Headline).
+		Msg("news_persisted")
 }
 
 func handleAIAnalysis(msg *nats.Msg, hub *ws.Hub, pg *postgres.Client) {

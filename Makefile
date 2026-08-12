@@ -9,6 +9,7 @@ AI_WORKER_DIR := ai-worker
 AI_WORKER_PROTO_OUT := $(AI_WORKER_DIR)/proto_gen
 GATEWAY_DIR := gateway
 GATEWAY_PROTO_OUT := $(GATEWAY_DIR)/internal/proto
+DASHBOARD_DIR := dashboard
 
 .PHONY: proto
 proto: proto-python proto-ai-worker proto-go
@@ -48,3 +49,40 @@ migrate:
 		echo "applying $$f"; \
 		docker compose exec -T postgres psql -U $(POSTGRES_USER) -d $(POSTGRES_DB) < $$f; \
 	done
+
+.PHONY: up
+up:
+	docker compose up -d
+
+.PHONY: down
+down:
+	docker compose down
+
+.PHONY: logs
+logs:
+	docker compose logs -f
+
+.PHONY: test
+test: test-gateway test-simulator test-ai-worker test-dashboard
+
+.PHONY: test-gateway
+test-gateway:
+	cd $(GATEWAY_DIR) && go test ./...
+
+.PHONY: test-simulator
+test-simulator:
+	cd $(SIMULATOR_DIR) && uv run pytest
+
+.PHONY: test-ai-worker
+test-ai-worker:
+	cd $(AI_WORKER_DIR) && uv run pytest
+
+.PHONY: test-dashboard
+test-dashboard:
+	cd $(DASHBOARD_DIR) && npx vitest run
+
+.PHONY: test-integration
+test-integration:
+	docker compose up -d --wait
+	$(MAKE) migrate
+	docker compose exec -T ai-worker python scripts/full_stack_integration_test.py

@@ -7,6 +7,7 @@ import structlog
 from aiohttp import web
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
+from nats.js.api import ConsumerConfig
 
 from config import load_settings
 from graph.build import build_graph
@@ -26,6 +27,7 @@ ANOMALY_CRITICAL_DURABLE = "ai-worker-anomaly-critical"
 RESULTS_STREAM = "STOCK_RESULTS"
 RESULTS_SUBJECT = "stock.results"
 QUEUE_DEPTH_POLL_SECONDS = 10
+MAX_ACK_PENDING = 10
 
 
 async def main() -> None:
@@ -74,9 +76,19 @@ async def main() -> None:
         finally:
             await msg.ack()
 
-    await js.subscribe(ANOMALY_SUBJECT, durable=ANOMALY_DURABLE, cb=handle_anomaly, manual_ack=True)
     await js.subscribe(
-        ANOMALY_CRITICAL_SUBJECT, durable=ANOMALY_CRITICAL_DURABLE, cb=handle_anomaly, manual_ack=True
+        ANOMALY_SUBJECT,
+        durable=ANOMALY_DURABLE,
+        cb=handle_anomaly,
+        manual_ack=True,
+        config=ConsumerConfig(max_ack_pending=MAX_ACK_PENDING),
+    )
+    await js.subscribe(
+        ANOMALY_CRITICAL_SUBJECT,
+        durable=ANOMALY_CRITICAL_DURABLE,
+        cb=handle_anomaly,
+        manual_ack=True,
+        config=ConsumerConfig(max_ack_pending=MAX_ACK_PENDING),
     )
 
     async def poll_queue_depth() -> None:
@@ -121,7 +133,11 @@ async def main() -> None:
     await runner.cleanup()
     await cache.close()
     await postgres.close()
-    await nc.drain()
+    try:
+        await nc.drain()
+    except Exception:
+        log.warning("nats_drain_failed", exc_info=True)
+        await nc.close()
 
 
 if __name__ == "__main__":
