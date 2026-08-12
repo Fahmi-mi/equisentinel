@@ -8,7 +8,7 @@ export interface StockQuote {
 	time: number;
 }
 
-interface StockQuoteWire {
+export interface StockQuoteWire {
 	ticker: string;
 	open: number;
 	high: number;
@@ -16,6 +16,18 @@ interface StockQuoteWire {
 	close: number;
 	volume: string;
 	timestamp: string;
+}
+
+export function toStockQuote(wire: StockQuoteWire): StockQuote {
+	return {
+		ticker: wire.ticker,
+		open: wire.open,
+		high: wire.high,
+		low: wire.low,
+		close: wire.close,
+		volume: Number(wire.volume),
+		time: Math.floor(new Date(wire.timestamp).getTime() / 1000)
+	};
 }
 
 export type Sentiment = 'BULLISH' | 'BEARISH' | 'NEUTRAL';
@@ -57,19 +69,7 @@ export function parseGatewayMessage(raw: string): GatewayMessage {
 	const envelope = JSON.parse(raw) as GatewayEnvelope;
 
 	if (envelope.type === 'quote') {
-		const wire = envelope.data;
-		return {
-			type: 'quote',
-			quote: {
-				ticker: wire.ticker,
-				open: wire.open,
-				high: wire.high,
-				low: wire.low,
-				close: wire.close,
-				volume: Number(wire.volume),
-				time: Math.floor(new Date(wire.timestamp).getTime() / 1000)
-			}
-		};
+		return { type: 'quote', quote: toStockQuote(envelope.data) };
 	}
 
 	const wire = envelope.data;

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -119,6 +120,12 @@ func main() {
 	mux.HandleFunc("/health", health.Handler(func() health.Status {
 		return health.Status{NATSConnected: nc.IsConnected(), WSClients: hub.ClientCount()}
 	}))
+	mux.HandleFunc("/history", func(w http.ResponseWriter, r *http.Request) {
+		handleHistory(w, r, pg)
+	})
+	mux.HandleFunc("/analyses", func(w http.ResponseWriter, r *http.Request) {
+		handleAnalysesHistory(w, r, pg)
+	})
 
 	srv := &http.Server{Addr: ":" + cfg.HTTPPort, Handler: mux}
 
@@ -156,6 +163,15 @@ func handleQuote(msg *nats.Msg, hub *ws.Hub, detector *anomaly.Detector, debounc
 	} else {
 		hub.Broadcast(envelope)
 	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	if err := pg.InsertStockPrice(
+		ctx, quote.Ticker, quote.Open, quote.High, quote.Low, quote.Close,
+		quote.Volume, quote.Timestamp.AsTime(),
+	); err != nil {
+		log.Error().Err(err).Msg("quote_persist_failed")
+	}
+	cancel()
 
 	results := detector.Evaluate(anomaly.Quote{
 		Ticker:    quote.Ticker,
@@ -214,6 +230,116 @@ func publishAnomaly(js nats.JetStreamContext, pg *postgres.Client, r anomaly.Res
 		Str("trigger_type", event.TriggerType).
 		Bool("critical", r.Critical).
 		Msg("anomaly_detected")
+}
+
+const defaultHistoryLimit = 500
+
+type historyQuote struct {
+	Ticker    string  `json:"ticker"`
+	Open      float64 `json:"open"`
+	High      float64 `json:"high"`
+	Low       float64 `json:"low"`
+	Close     float64 `json:"close"`
+	Volume    string  `json:"volume"`
+	Timestamp string  `json:"timestamp"`
+}
+
+func handleHistory(w http.ResponseWriter, r *http.Request, pg *postgres.Client) {
+	ticker := r.URL.Query().Get("ticker")
+	if ticker == "" {
+		http.Error(w, "ticker is required", http.StatusBadRequest)
+		return
+	}
+
+	limit := defaultHistoryLimit
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 && parsed <= defaultHistoryLimit {
+			limit = parsed
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	rows, err := pg.QueryStockPrices(ctx, ticker, limit)
+	if err != nil {
+		log.Error().Err(err).Msg("history_query_failed")
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	quotes := make([]historyQuote, len(rows))
+	for i, row := range rows {
+		quotes[i] = historyQuote{
+			Ticker:    row.Ticker,
+			Open:      row.Open,
+			High:      row.High,
+			Low:       row.Low,
+			Close:     row.Close,
+			Volume:    strconv.FormatInt(row.Volume, 10),
+			Timestamp: row.Timestamp.UTC().Format(time.RFC3339),
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(struct {
+		Quotes []historyQuote `json:"quotes"`
+	}{Quotes: quotes})
+}
+
+const defaultAnalysesLimit = 200
+
+type historyAnalysis struct {
+	CorrelationID string `json:"correlationId"`
+	Ticker        string `json:"ticker"`
+	Summary       string `json:"summary"`
+	Sentiment     string `json:"sentiment"`
+	RiskLevel     string `json:"riskLevel"`
+	ModelUsed     string `json:"modelUsed"`
+	LatencyMs     int32  `json:"latencyMs"`
+	CreatedAt     string `json:"createdAt"`
+}
+
+func handleAnalysesHistory(w http.ResponseWriter, r *http.Request, pg *postgres.Client) {
+	ticker := r.URL.Query().Get("ticker")
+	if ticker == "" {
+		http.Error(w, "ticker is required", http.StatusBadRequest)
+		return
+	}
+
+	limit := defaultAnalysesLimit
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 && parsed <= defaultAnalysesLimit {
+			limit = parsed
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	rows, err := pg.QueryAIAnalyses(ctx, ticker, limit)
+	if err != nil {
+		log.Error().Err(err).Msg("analyses_history_query_failed")
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	analyses := make([]historyAnalysis, len(rows))
+	for i, row := range rows {
+		analyses[i] = historyAnalysis{
+			CorrelationID: row.CorrelationID,
+			Ticker:        row.Ticker,
+			Summary:       row.Summary,
+			Sentiment:     row.Sentiment,
+			RiskLevel:     row.RiskLevel,
+			ModelUsed:     row.ModelUsed,
+			LatencyMs:     row.LatencyMs,
+			CreatedAt:     row.CreatedAt.UTC().Format(time.RFC3339),
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(struct {
+		Analyses []historyAnalysis `json:"analyses"`
+	}{Analyses: analyses})
 }
 
 func handleNewsArticle(msg *nats.Msg, pg *postgres.Client) {
