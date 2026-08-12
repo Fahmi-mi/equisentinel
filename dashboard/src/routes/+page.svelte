@@ -5,6 +5,9 @@
 	import { analysisStore } from '$lib/stores/analyses.svelte';
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 	import CandlestickChart from '$lib/components/CandlestickChart.svelte';
+	import type { PageData } from './$types';
+
+	let { data }: { data: PageData } = $props();
 
 	const TICKERS = ['BBCA', 'BBRI', 'TLKM', 'ASII', 'GOTO'];
 	const GATEWAY_WS_URL = import.meta.env.VITE_GATEWAY_WS_URL ?? 'ws://localhost:8080/ws';
@@ -13,6 +16,12 @@
 	const socket = new GatewaySocket(GATEWAY_WS_URL);
 
 	onMount(() => {
+		for (const quotes of Object.values(data.history)) {
+			for (const quote of quotes) quoteStore.add(quote);
+		}
+		for (const analyses of Object.values(data.analysisHistory)) {
+			for (const analysis of analyses) analysisStore.add(analysis);
+		}
 		socket.connect();
 		return () => socket.disconnect();
 	});
