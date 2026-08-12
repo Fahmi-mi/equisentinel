@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -20,6 +22,7 @@ import (
 	"github.com/Fahmi-mi/equisentinel/gateway/internal/config"
 	"github.com/Fahmi-mi/equisentinel/gateway/internal/health"
 	"github.com/Fahmi-mi/equisentinel/gateway/internal/natsclient"
+	"github.com/Fahmi-mi/equisentinel/gateway/internal/postgres"
 	pb "github.com/Fahmi-mi/equisentinel/gateway/internal/proto"
 	"github.com/Fahmi-mi/equisentinel/gateway/internal/ws"
 )
@@ -31,10 +34,20 @@ const (
 	anomalyStream       = "STOCK_ANOMALY"
 	anomalySubject      = "stock.anomaly"
 	anomalyCriticalSubj = "stock.anomaly.critical"
+	resultsStream       = "STOCK_RESULTS"
+	resultsSubject      = "stock.results"
+	resultsConsumer     = "gateway-results"
 	streamMaxAge        = 24 * time.Hour
 )
 
-var quoteJSONMarshaler = protojson.MarshalOptions{EmitUnpopulated: true}
+var pbJSONMarshaler = protojson.MarshalOptions{EmitUnpopulated: true}
+
+func wrapEnvelope(msgType string, data []byte) ([]byte, error) {
+	return json.Marshal(struct {
+		Type string          `json:"type"`
+		Data json.RawMessage `json:"data"`
+	}{Type: msgType, Data: data})
+}
 
 func main() {
 	zerolog.TimeFieldFormat = time.RFC3339
@@ -46,11 +59,20 @@ func main() {
 	}
 	defer nc.Close()
 
+	pg, err := postgres.Connect(context.Background(), cfg.DatabaseURL)
+	if err != nil {
+		log.Fatal().Err(err).Msg("postgres_connect_failed")
+	}
+	defer pg.Close()
+
 	if err := nc.EnsureStream(anomalyStream, []string{anomalySubject, anomalyCriticalSubj}, streamMaxAge); err != nil {
 		log.Fatal().Err(err).Msg("ensure_anomaly_stream_failed")
 	}
 	if err := nc.EnsureStream(quotesStream, []string{quotesSubject}, streamMaxAge); err != nil {
 		log.Fatal().Err(err).Msg("ensure_quotes_stream_failed")
+	}
+	if err := nc.EnsureStream(resultsStream, []string{resultsSubject}, streamMaxAge); err != nil {
+		log.Fatal().Err(err).Msg("ensure_results_stream_failed")
 	}
 
 	hub := ws.NewHub()
@@ -65,6 +87,14 @@ func main() {
 		log.Fatal().Err(err).Msg("subscribe_quotes_failed")
 	}
 	defer sub.Unsubscribe()
+
+	resultsSub, err := js.Subscribe(resultsSubject, func(msg *nats.Msg) {
+		handleAIAnalysis(msg, hub, pg)
+	}, nats.Durable(resultsConsumer), nats.ManualAck())
+	if err != nil {
+		log.Fatal().Err(err).Msg("subscribe_results_failed")
+	}
+	defer resultsSub.Unsubscribe()
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
@@ -104,11 +134,13 @@ func handleQuote(msg *nats.Msg, hub *ws.Hub, detector *anomaly.Detector, debounc
 		return
 	}
 
-	quoteJSON, err := quoteJSONMarshaler.Marshal(&quote)
+	quoteJSON, err := pbJSONMarshaler.Marshal(&quote)
 	if err != nil {
 		log.Error().Err(err).Msg("quote_marshal_json_failed")
+	} else if envelope, err := wrapEnvelope("quote", quoteJSON); err != nil {
+		log.Error().Err(err).Msg("quote_envelope_failed")
 	} else {
-		hub.Broadcast(quoteJSON)
+		hub.Broadcast(envelope)
 	}
 
 	results := detector.Evaluate(anomaly.Quote{
@@ -159,4 +191,44 @@ func publishAnomaly(js nats.JetStreamContext, r anomaly.Result) {
 		Str("trigger_type", event.TriggerType).
 		Bool("critical", r.Critical).
 		Msg("anomaly_detected")
+}
+
+func handleAIAnalysis(msg *nats.Msg, hub *ws.Hub, pg *postgres.Client) {
+	defer msg.Ack()
+
+	var analysis pb.AiAnalysis
+	if err := proto.Unmarshal(msg.Data, &analysis); err != nil {
+		log.Error().Err(err).Msg("analysis_unmarshal_failed")
+		return
+	}
+
+	sentiment := strings.TrimPrefix(analysis.Sentiment.String(), "SENTIMENT_")
+	riskLevel := strings.TrimPrefix(analysis.RiskLevel.String(), "RISK_LEVEL_")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := pg.InsertAIAnalysis(
+		ctx, analysis.CorrelationId, analysis.Ticker, analysis.Summary,
+		sentiment, riskLevel, analysis.ModelUsed, analysis.LatencyMs,
+	); err != nil {
+		log.Error().Err(err).Msg("analysis_persist_failed")
+	}
+
+	analysisJSON, err := pbJSONMarshaler.Marshal(&analysis)
+	if err != nil {
+		log.Error().Err(err).Msg("analysis_marshal_json_failed")
+		return
+	}
+	envelope, err := wrapEnvelope("ai_analysis", analysisJSON)
+	if err != nil {
+		log.Error().Err(err).Msg("analysis_envelope_failed")
+		return
+	}
+	hub.Broadcast(envelope)
+
+	log.Info().
+		Str("correlation_id", analysis.CorrelationId).
+		Str("ticker", analysis.Ticker).
+		Str("sentiment", sentiment).
+		Msg("analysis_received")
 }

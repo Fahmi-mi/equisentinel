@@ -7,6 +7,7 @@ import (
 
 type Config struct {
 	NATSURL                 string
+	DatabaseURL             string
 	HTTPPort                string
 	PriceChangePctThreshold float64
 	VolumeRatioThreshold    float64
@@ -17,6 +18,7 @@ type Config struct {
 func Load() Config {
 	return Config{
 		NATSURL:                 getEnv("NATS_URL", "nats://localhost:4222"),
+		DatabaseURL:             getEnv("DATABASE_URL", "postgresql://equisentinel:equisentinel@localhost:5432/equisentinel"),
 		HTTPPort:                getEnv("HTTP_PORT", "8080"),
 		PriceChangePctThreshold: getEnvFloat("PRICE_CHANGE_THRESHOLD_PCT", 3.0),
 		VolumeRatioThreshold:    getEnvFloat("VOLUME_RATIO_THRESHOLD", 5.0),

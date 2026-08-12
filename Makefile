@@ -1,3 +1,7 @@
+MIGRATIONS_DIR := migrations
+POSTGRES_USER ?= equisentinel
+POSTGRES_DB ?= equisentinel
+
 PROTO_DIR := proto
 SIMULATOR_DIR := simulator
 SIMULATOR_PROTO_OUT := $(SIMULATOR_DIR)/proto_gen
@@ -37,3 +41,10 @@ proto-go:
 		--go_out=$(GATEWAY_PROTO_OUT) \
 		--go_opt=paths=source_relative \
 		$(PROTO_DIR)/*.proto
+
+.PHONY: migrate
+migrate:
+	@for f in $(MIGRATIONS_DIR)/*.sql; do \
+		echo "applying $$f"; \
+		docker compose exec -T postgres psql -U $(POSTGRES_USER) -d $(POSTGRES_DB) < $$f; \
+	done

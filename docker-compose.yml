@@ -19,6 +19,7 @@ services:
       - "${HTTP_PORT:-8080}:${HTTP_PORT:-8080}"
     environment:
       NATS_URL: nats://nats:4222
+      DATABASE_URL: postgresql://${POSTGRES_USER:-equisentinel}:${POSTGRES_PASSWORD:-equisentinel}@postgres:5432/${POSTGRES_DB:-equisentinel}
       HTTP_PORT: ${HTTP_PORT:-8080}
       PRICE_CHANGE_THRESHOLD_PCT: ${PRICE_CHANGE_THRESHOLD_PCT:-3.0}
       VOLUME_RATIO_THRESHOLD: ${VOLUME_RATIO_THRESHOLD:-5.0}
@@ -26,6 +27,8 @@ services:
       DEBOUNCE_WINDOW_SECONDS: ${DEBOUNCE_WINDOW_SECONDS:-30}
     depends_on:
       nats:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:${HTTP_PORT:-8080}/health"]
