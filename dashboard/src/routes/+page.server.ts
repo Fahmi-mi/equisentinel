@@ -1,6 +1,6 @@
 import { env } from '$env/dynamic/private';
 import { toStockQuote, type RiskLevel, type Sentiment, type StockQuote, type StockQuoteWire } from '$lib/ws/parse';
-import type { TimedAnalysis } from '$lib/stores/analyses.svelte';
+import type { FeedbackValue, TimedAnalysis } from '$lib/stores/analyses.svelte';
 import type { PageServerLoad } from './$types';
 
 const TICKERS = ['BBCA', 'BBRI', 'TLKM', 'ASII', 'GOTO'];
@@ -15,6 +15,7 @@ interface AnalysisWire {
 	modelUsed: string;
 	latencyMs: number;
 	createdAt: string;
+	feedback?: string;
 }
 
 function toTimedAnalysis(wire: AnalysisWire): TimedAnalysis {
@@ -26,7 +27,8 @@ function toTimedAnalysis(wire: AnalysisWire): TimedAnalysis {
 		riskLevel: wire.riskLevel as RiskLevel,
 		modelUsed: wire.modelUsed,
 		latencyMs: wire.latencyMs,
-		time: Math.floor(new Date(wire.createdAt).getTime() / 1000)
+		time: Math.floor(new Date(wire.createdAt).getTime() / 1000),
+		feedback: (wire.feedback as FeedbackValue | undefined) ?? null
 	};
 }
 
