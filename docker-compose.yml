@@ -75,7 +75,9 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-equisentinel}:${POSTGRES_PASSWORD:-equisentinel}@postgres:5432/${POSTGRES_DB:-equisentinel}
       REDIS_URL: redis://redis:6379
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
-      LANGCHAIN_API_KEY: ${LANGCHAIN_API_KEY:-}
+      LANGSMITH_API_KEY: ${LANGSMITH_API_KEY:-}
+      LANGSMITH_TRACING: ${LANGSMITH_TRACING:-false}
+      LANGSMITH_PROJECT: ${LANGSMITH_PROJECT:-equisentinel}
     depends_on:
       nats:
         condition: service_healthy
