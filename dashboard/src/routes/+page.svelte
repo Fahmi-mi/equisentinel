@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { GatewaySocket } from '$lib/ws/client.svelte';
 	import { quoteStore } from '$lib/stores/quotes.svelte';
-	import { analysisStore } from '$lib/stores/analyses.svelte';
+	import { analysisStore, type FeedbackValue } from '$lib/stores/analyses.svelte';
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 	import CandlestickChart from '$lib/components/CandlestickChart.svelte';
 	import type { PageData } from './$types';
@@ -46,6 +46,28 @@
 		MEDIUM: { label: 'Medium Risk', class: 'bg-amber-500/15 text-amber-500' },
 		HIGH: { label: 'High Risk', class: 'bg-rose-500/15 text-rose-500' }
 	} as const;
+
+	let submittingFeedback = $state(false);
+
+	async function submitFeedback(value: FeedbackValue) {
+		if (!latestAnalysis || submittingFeedback) return;
+		const { correlationId, ticker } = latestAnalysis;
+
+		submittingFeedback = true;
+		try {
+			const res = await fetch('/api/feedback', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ correlationId, feedbackValue: value })
+			});
+			if (!res.ok) throw new Error(`feedback request failed with status ${res.status}`);
+			analysisStore.setFeedback(ticker, correlationId, value);
+		} catch (err) {
+			console.error('failed to submit feedback', err);
+		} finally {
+			submittingFeedback = false;
+		}
+	}
 </script>
 
 <div class="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 p-4 sm:p-6">
@@ -106,9 +128,35 @@
 				</div>
 			</div>
 			<p class="text-sm leading-relaxed">{latestAnalysis.summary}</p>
-			<p class="text-muted text-xs">
-				{latestAnalysis.modelUsed} &middot; {latestAnalysis.latencyMs}ms
-			</p>
+			<div class="flex items-center justify-between">
+				<p class="text-muted text-xs">
+					{latestAnalysis.modelUsed} &middot; {latestAnalysis.latencyMs}ms
+				</p>
+				<div class="flex items-center gap-2">
+					<button
+						type="button"
+						disabled={submittingFeedback}
+						onclick={() => submitFeedback('ACCURATE')}
+						class="rounded-full px-3 py-1 text-xs font-medium transition disabled:opacity-50 {latestAnalysis.feedback ===
+						'ACCURATE'
+							? 'bg-emerald-500 text-white'
+							: 'text-muted bg-black/5 hover:bg-emerald-500/15 dark:bg-white/5'}"
+					>
+						Akurat
+					</button>
+					<button
+						type="button"
+						disabled={submittingFeedback}
+						onclick={() => submitFeedback('INACCURATE')}
+						class="rounded-full px-3 py-1 text-xs font-medium transition disabled:opacity-50 {latestAnalysis.feedback ===
+						'INACCURATE'
+							? 'bg-rose-500 text-white'
+							: 'text-muted bg-black/5 hover:bg-rose-500/15 dark:bg-white/5'}"
+					>
+						Tidak Akurat
+					</button>
+				</div>
+			</div>
 		</section>
 	{/if}
 </div>

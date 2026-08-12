@@ -126,6 +126,9 @@ func main() {
 	mux.HandleFunc("/analyses", func(w http.ResponseWriter, r *http.Request) {
 		handleAnalysesHistory(w, r, pg)
 	})
+	mux.HandleFunc("/feedback", func(w http.ResponseWriter, r *http.Request) {
+		handleFeedback(w, r, pg)
+	})
 
 	srv := &http.Server{Addr: ":" + cfg.HTTPPort, Handler: mux}
 
@@ -289,14 +292,15 @@ func handleHistory(w http.ResponseWriter, r *http.Request, pg *postgres.Client) 
 const defaultAnalysesLimit = 200
 
 type historyAnalysis struct {
-	CorrelationID string `json:"correlationId"`
-	Ticker        string `json:"ticker"`
-	Summary       string `json:"summary"`
-	Sentiment     string `json:"sentiment"`
-	RiskLevel     string `json:"riskLevel"`
-	ModelUsed     string `json:"modelUsed"`
-	LatencyMs     int32  `json:"latencyMs"`
-	CreatedAt     string `json:"createdAt"`
+	CorrelationID string  `json:"correlationId"`
+	Ticker        string  `json:"ticker"`
+	Summary       string  `json:"summary"`
+	Sentiment     string  `json:"sentiment"`
+	RiskLevel     string  `json:"riskLevel"`
+	ModelUsed     string  `json:"modelUsed"`
+	LatencyMs     int32   `json:"latencyMs"`
+	CreatedAt     string  `json:"createdAt"`
+	Feedback      *string `json:"feedback,omitempty"`
 }
 
 func handleAnalysesHistory(w http.ResponseWriter, r *http.Request, pg *postgres.Client) {
@@ -333,6 +337,7 @@ func handleAnalysesHistory(w http.ResponseWriter, r *http.Request, pg *postgres.
 			ModelUsed:     row.ModelUsed,
 			LatencyMs:     row.LatencyMs,
 			CreatedAt:     row.CreatedAt.UTC().Format(time.RFC3339),
+			Feedback:      row.Feedback,
 		}
 	}
 
@@ -340,6 +345,38 @@ func handleAnalysesHistory(w http.ResponseWriter, r *http.Request, pg *postgres.
 	json.NewEncoder(w).Encode(struct {
 		Analyses []historyAnalysis `json:"analyses"`
 	}{Analyses: analyses})
+}
+
+type feedbackRequest struct {
+	CorrelationID string `json:"correlationId"`
+	FeedbackValue string `json:"feedbackValue"`
+}
+
+func handleFeedback(w http.ResponseWriter, r *http.Request, pg *postgres.Client) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req feedbackRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if req.CorrelationID == "" || (req.FeedbackValue != "ACCURATE" && req.FeedbackValue != "INACCURATE") {
+		http.Error(w, "correlationId and a valid feedbackValue are required", http.StatusBadRequest)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	if err := pg.UpsertUserFeedback(ctx, req.CorrelationID, req.FeedbackValue); err != nil {
+		log.Error().Err(err).Msg("feedback_persist_failed")
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func handleNewsArticle(msg *nats.Msg, pg *postgres.Client) {

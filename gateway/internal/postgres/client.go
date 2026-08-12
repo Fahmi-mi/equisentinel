@@ -73,15 +73,18 @@ type AIAnalysisRow struct {
 	ModelUsed     string
 	LatencyMs     int32
 	CreatedAt     time.Time
+	Feedback      *string
 }
 
 func (c *Client) QueryAIAnalyses(ctx context.Context, ticker string, limit int) ([]AIAnalysisRow, error) {
 	rows, err := c.pool.Query(ctx, `
-		SELECT correlation_id, ticker, summary, sentiment, risk_level, model_used, latency_ms, created_at FROM (
-			SELECT correlation_id, ticker, summary, sentiment, risk_level, model_used, latency_ms, created_at
-			FROM ai_analyses
-			WHERE ticker = $1
-			ORDER BY created_at DESC
+		SELECT correlation_id, ticker, summary, sentiment, risk_level, model_used, latency_ms, created_at, feedback_value FROM (
+			SELECT a.correlation_id, a.ticker, a.summary, a.sentiment, a.risk_level, a.model_used, a.latency_ms,
+				a.created_at, f.feedback_value
+			FROM ai_analyses a
+			LEFT JOIN user_feedback f ON f.correlation_id = a.correlation_id
+			WHERE a.ticker = $1
+			ORDER BY a.created_at DESC
 			LIMIT $2
 		) recent
 		ORDER BY created_at ASC
@@ -96,13 +99,22 @@ func (c *Client) QueryAIAnalyses(ctx context.Context, ticker string, limit int) 
 		var r AIAnalysisRow
 		if err := rows.Scan(
 			&r.CorrelationID, &r.Ticker, &r.Summary, &r.Sentiment,
-			&r.RiskLevel, &r.ModelUsed, &r.LatencyMs, &r.CreatedAt,
+			&r.RiskLevel, &r.ModelUsed, &r.LatencyMs, &r.CreatedAt, &r.Feedback,
 		); err != nil {
 			return nil, err
 		}
 		result = append(result, r)
 	}
 	return result, rows.Err()
+}
+
+func (c *Client) UpsertUserFeedback(ctx context.Context, correlationID, feedbackValue string) error {
+	_, err := c.pool.Exec(ctx, `
+		INSERT INTO user_feedback (correlation_id, feedback_value, submitted_at)
+		VALUES ($1, $2, now())
+		ON CONFLICT (correlation_id) DO UPDATE SET feedback_value = $2, submitted_at = now()
+	`, correlationID, feedbackValue)
+	return err
 }
 
 func (c *Client) InsertStockPrice(
