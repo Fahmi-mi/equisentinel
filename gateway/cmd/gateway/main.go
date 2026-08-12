@@ -25,6 +25,7 @@ import (
 )
 
 const (
+	quotesStream        = "STOCK_QUOTES"
 	quotesSubject       = "stock.quotes.*"
 	quotesConsumer      = "gateway-quotes"
 	anomalyStream       = "STOCK_ANOMALY"
@@ -47,6 +48,9 @@ func main() {
 
 	if err := nc.EnsureStream(anomalyStream, []string{anomalySubject, anomalyCriticalSubj}, streamMaxAge); err != nil {
 		log.Fatal().Err(err).Msg("ensure_anomaly_stream_failed")
+	}
+	if err := nc.EnsureStream(quotesStream, []string{quotesSubject}, streamMaxAge); err != nil {
+		log.Fatal().Err(err).Msg("ensure_quotes_stream_failed")
 	}
 
 	hub := ws.NewHub()
