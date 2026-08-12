@@ -1,0 +1,25 @@
+[project]
+name = "ai-worker"
+version = "0.1.0"
+description = "Add your description here"
+authors = [
+    { name = "Fahmi Haqqul Ihsan", email = "fahmihaqqulihsan@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "langgraph>=0.6.0",
+    "langchain-openai>=0.3.0",
+    "nats-py>=2.15.0",
+    "asyncpg>=0.30.0",
+    "redis>=6.0.0",
+    "pydantic>=2.11.0",
+    "protobuf>=7.35.1",
+    "python-dotenv>=1.2.2",
+    "structlog>=26.1.0",
+]
+
+[dependency-groups]
+dev = [
+    "grpcio-tools>=1.83.0",
+    "pytest>=9.1.1",
+]
