@@ -36,6 +36,7 @@
 		"vitest-browser-svelte": "^2.1.1"
 	},
 	"dependencies": {
-		"lightweight-charts": "^5.2.0"
+		"lightweight-charts": "^5.2.0",
+		"pino": "^10.3.1"
 	}
 }

@@ -3,17 +3,40 @@
 	import {
 		createChart,
 		CandlestickSeries,
+		createSeriesMarkers,
 		type IChartApi,
 		type ISeriesApi,
+		type ISeriesMarkersPluginApi,
+		type SeriesMarker,
+		type Time,
 		type UTCTimestamp
 	} from 'lightweight-charts';
 	import { quoteStore } from '$lib/stores/quotes.svelte';
+	import { analysisStore, type TimedAnalysis } from '$lib/stores/analyses.svelte';
 
 	let { ticker }: { ticker: string } = $props();
 
 	let container: HTMLDivElement;
 	let chart: IChartApi | undefined;
 	let series: ISeriesApi<'Candlestick'> | undefined;
+	let markers: ISeriesMarkersPluginApi<Time> | undefined;
+
+	const markerStyle = {
+		BULLISH: { shape: 'arrowUp', position: 'belowBar', color: '#34d399' },
+		BEARISH: { shape: 'arrowDown', position: 'aboveBar', color: '#f87171' },
+		NEUTRAL: { shape: 'circle', position: 'aboveBar', color: '#94a3b8' }
+	} as const;
+
+	function toMarker(analysis: TimedAnalysis): SeriesMarker<Time> {
+		const style = markerStyle[analysis.sentiment];
+		return {
+			time: analysis.time as UTCTimestamp,
+			position: style.position,
+			color: style.color,
+			shape: style.shape,
+			text: analysis.riskLevel
+		};
+	}
 
 	onMount(() => {
 		chart = createChart(container, {
@@ -37,6 +60,8 @@
 			wickUpColor: '#34d399',
 			wickDownColor: '#f87171'
 		});
+
+		markers = createSeriesMarkers(series, []);
 	});
 
 	$effect(() => {
@@ -51,6 +76,11 @@
 				close: q.close
 			}))
 		);
+	});
+
+	$effect(() => {
+		if (!markers) return;
+		markers.setMarkers(analysisStore.history(ticker).map(toMarker));
 	});
 
 	onDestroy(() => {

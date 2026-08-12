@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import asyncio
+import signal
 import time
 
 import numpy as np
 import structlog
+from aiohttp import web
 from dotenv import load_dotenv
 
 from config import load_scenarios, load_settings, load_tickers
 from generator import TickerState, generate_candle
+from health import Status, make_health_handler
 from publisher import Publisher
 from scenarios import ScenarioEngine
 
@@ -59,6 +62,14 @@ async def run() -> None:
     publisher = Publisher(settings)
     await publisher.connect()
 
+    app = web.Application()
+    app.router.add_get("/health", make_health_handler(lambda: Status(nats_connected=publisher.is_connected)))
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", int(settings.http_port))
+    await site.start()
+    log.info("http_server_starting", port=settings.http_port)
+
     states = [
         TickerState(cfg=cfg, rng=np.random.default_rng(seed))
         for cfg, seed in zip(tickers, child_seeds)
@@ -67,19 +78,31 @@ async def run() -> None:
     clock_start = time.monotonic()
     log.info("simulator_started", tickers=[s.cfg.ticker for s in states], scenarios=len(scenarios))
 
+    stop_event = asyncio.Event()
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, stop_event.set)
+
+    ticker_tasks = [
+        asyncio.create_task(_run_ticker(state, settings, scenario_engine, publisher, clock_start))
+        for state in states
+    ]
+    stop_task = asyncio.create_task(stop_event.wait())
+
     try:
-        await asyncio.gather(
-            *(_run_ticker(state, settings, scenario_engine, publisher, clock_start) for state in states)
-        )
+        await asyncio.wait([*ticker_tasks, stop_task], return_when=asyncio.FIRST_COMPLETED)
     finally:
+        log.info("shutting_down")
+        stop_task.cancel()
+        for task in ticker_tasks:
+            task.cancel()
+        await asyncio.gather(*ticker_tasks, stop_task, return_exceptions=True)
+        await runner.cleanup()
         await publisher.close()
 
 
 def main() -> None:
-    try:
-        asyncio.run(run())
-    except KeyboardInterrupt:
-        log.info("simulator_stopped")
+    asyncio.run(run())
 
 
 if __name__ == "__main__":

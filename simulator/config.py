@@ -37,6 +37,7 @@ class SimulatorSettings:
     candle_interval_seconds: float
     ticks_per_candle: int
     random_seed: Optional[int]
+    http_port: str
 
 
 def load_tickers(path: Optional[Path] = None) -> list[TickerConfig]:
@@ -69,4 +70,5 @@ def load_settings() -> SimulatorSettings:
         candle_interval_seconds=float(os.getenv("CANDLE_INTERVAL_SECONDS", "2")),
         ticks_per_candle=int(os.getenv("TICKS_PER_CANDLE", "5")),
         random_seed=int(seed) if seed else None,
+        http_port=os.getenv("SIMULATOR_HTTP_PORT", "8082"),
     )

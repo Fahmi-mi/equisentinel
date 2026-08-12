@@ -10,6 +10,7 @@ def make_settings() -> SimulatorSettings:
         candle_interval_seconds=2.0,
         ticks_per_candle=5,
         random_seed=None,
+        http_port="8082",
     )
 
 

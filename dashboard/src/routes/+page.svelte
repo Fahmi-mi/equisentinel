@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { GatewaySocket } from '$lib/ws/client.svelte';
 	import { quoteStore } from '$lib/stores/quotes.svelte';
+	import { analysisStore } from '$lib/stores/analyses.svelte';
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 	import CandlestickChart from '$lib/components/CandlestickChart.svelte';
 
@@ -23,6 +24,19 @@
 	} as const;
 
 	const latestQuote = $derived(quoteStore.latest(activeTicker).at(-1));
+	const latestAnalysis = $derived(analysisStore.latest(activeTicker));
+
+	const sentimentMeta = {
+		BULLISH: { label: 'Bullish', class: 'bg-emerald-500/15 text-emerald-500' },
+		BEARISH: { label: 'Bearish', class: 'bg-rose-500/15 text-rose-500' },
+		NEUTRAL: { label: 'Neutral', class: 'bg-slate-500/15 text-slate-400' }
+	} as const;
+
+	const riskMeta = {
+		LOW: { label: 'Low Risk', class: 'bg-emerald-500/15 text-emerald-500' },
+		MEDIUM: { label: 'Medium Risk', class: 'bg-amber-500/15 text-amber-500' },
+		HIGH: { label: 'High Risk', class: 'bg-rose-500/15 text-rose-500' }
+	} as const;
 </script>
 
 <div class="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 p-4 sm:p-6">
@@ -68,4 +82,24 @@
 			<CandlestickChart ticker={activeTicker} />
 		</div>
 	</section>
+
+	{#if latestAnalysis}
+		<section class="glass-panel flex flex-col gap-3 rounded-2xl p-6">
+			<div class="flex items-center justify-between">
+				<h3 class="text-sm font-semibold tracking-tight">AI Analysis</h3>
+				<div class="flex items-center gap-2">
+					<span class="rounded-full px-3 py-1 text-xs font-medium {sentimentMeta[latestAnalysis.sentiment].class}">
+						{sentimentMeta[latestAnalysis.sentiment].label}
+					</span>
+					<span class="rounded-full px-3 py-1 text-xs font-medium {riskMeta[latestAnalysis.riskLevel].class}">
+						{riskMeta[latestAnalysis.riskLevel].label}
+					</span>
+				</div>
+			</div>
+			<p class="text-sm leading-relaxed">{latestAnalysis.summary}</p>
+			<p class="text-muted text-xs">
+				{latestAnalysis.modelUsed} &middot; {latestAnalysis.latencyMs}ms
+			</p>
+		</section>
+	{/if}
 </div>

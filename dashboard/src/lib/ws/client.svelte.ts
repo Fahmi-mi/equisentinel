@@ -1,5 +1,6 @@
-import { parseQuoteMessage } from './parse';
+import { parseGatewayMessage } from './parse';
 import { quoteStore } from '$lib/stores/quotes.svelte';
+import { analysisStore } from '$lib/stores/analyses.svelte';
 
 const RECONNECT_DELAY_MS = 2000;
 
@@ -30,7 +31,15 @@ export class GatewaySocket {
 
 		socket.addEventListener('message', (event) => {
 			try {
-				quoteStore.add(parseQuoteMessage(event.data));
+				const message = parseGatewayMessage(event.data);
+				if (message.type === 'quote') {
+					quoteStore.add(message.quote);
+				} else {
+					const { analysis } = message;
+					const time =
+						quoteStore.latest(analysis.ticker).at(-1)?.time ?? Math.floor(Date.now() / 1000);
+					analysisStore.add({ ...analysis, time });
+				}
 			} catch (err) {
 				console.error('failed to parse gateway message', err);
 			}
