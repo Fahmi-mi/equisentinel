@@ -1,0 +1,60 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  gateway:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache-dependency-path: gateway/go.sum
+      - run: go test ./...
+        working-directory: gateway
+
+  simulator:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          working-directory: simulator
+      - run: uv sync
+        working-directory: simulator
+      - run: make proto-python
+      - run: uv run pytest
+        working-directory: simulator
+
+  ai-worker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          working-directory: ai-worker
+      - run: uv sync
+        working-directory: ai-worker
+      - run: make proto-ai-worker
+      - run: uv run pytest
+        working-directory: ai-worker
+
+  dashboard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+      - run: npm ci
+        working-directory: dashboard
+      - run: npm run check
+        working-directory: dashboard
+      - run: npm test
+        working-directory: dashboard

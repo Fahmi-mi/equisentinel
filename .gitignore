@@ -1,0 +1,26 @@
+# Env & secrets
+.env
+*.env.local
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Generated protobuf code
+**/proto_gen/
+
+# Node / SvelteKit
+node_modules/
+.svelte-kit/
+build/
+
+# Go
+gateway/bin/
+
+# OS
+.DS_Store
+Thumbs.db

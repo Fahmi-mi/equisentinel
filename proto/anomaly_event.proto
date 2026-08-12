@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package proto;
+
+option go_package = "github.com/Fahmi-mi/equisentinel/gateway/proto;proto";
+
+import "google/protobuf/timestamp.proto";
+
+message AnomalyEvent {
+  string correlation_id = 1;
+  string ticker = 2;
+  string trigger_type = 3;
+  double price_change_pct = 4;
+  double volume_ratio = 5;
+  google.protobuf.Timestamp detected_at = 6;
+}

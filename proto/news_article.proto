@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package proto;
+
+option go_package = "github.com/Fahmi-mi/equisentinel/gateway/proto;proto";
+
+import "google/protobuf/timestamp.proto";
+
+message NewsArticle {
+  string id = 1;
+  string ticker = 2;
+  string headline = 3;
+  string body = 4;
+  string source = 5;
+  google.protobuf.Timestamp published_at = 6;
+}
