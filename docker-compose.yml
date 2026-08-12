@@ -16,15 +16,19 @@ services:
   gateway:
     build: ./gateway
     ports:
-      - "8080:8080"
+      - "${HTTP_PORT:-8080}:${HTTP_PORT:-8080}"
     environment:
       NATS_URL: nats://nats:4222
-      HTTP_PORT: "8080"
+      HTTP_PORT: ${HTTP_PORT:-8080}
+      PRICE_CHANGE_THRESHOLD_PCT: ${PRICE_CHANGE_THRESHOLD_PCT:-3.0}
+      VOLUME_RATIO_THRESHOLD: ${VOLUME_RATIO_THRESHOLD:-5.0}
+      CRITICAL_PRICE_CHANGE_PCT: ${CRITICAL_PRICE_CHANGE_PCT:-5.0}
+      DEBOUNCE_WINDOW_SECONDS: ${DEBOUNCE_WINDOW_SECONDS:-30}
     depends_on:
       nats:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:${HTTP_PORT:-8080}/health"]
       interval: 10s
       timeout: 3s
       retries: 5
@@ -33,9 +37,54 @@ services:
     build: ./simulator
     environment:
       NATS_URL: nats://nats:4222
+      CANDLE_INTERVAL_SECONDS: ${CANDLE_INTERVAL_SECONDS:-2}
+      TICKS_PER_CANDLE: ${TICKS_PER_CANDLE:-5}
+      SIM_RANDOM_SEED: ${SIM_RANDOM_SEED:-}
     depends_on:
       nats:
         condition: service_healthy
 
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-equisentinel}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-equisentinel}
+      POSTGRES_DB: ${POSTGRES_DB:-equisentinel}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-equisentinel}"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  ai-worker:
+    build: ./ai-worker
+    environment:
+      NATS_URL: nats://nats:4222
+      DATABASE_URL: postgresql://${POSTGRES_USER:-equisentinel}:${POSTGRES_PASSWORD:-equisentinel}@postgres:5432/${POSTGRES_DB:-equisentinel}
+      REDIS_URL: redis://redis:6379
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
+      LANGCHAIN_API_KEY: ${LANGCHAIN_API_KEY:-}
+    depends_on:
+      nats:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
 volumes:
   nats_data:
+  postgres_data:
+  redis_data:
