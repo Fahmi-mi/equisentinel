@@ -4,14 +4,25 @@ import nats.errors
 
 
 class FakePostgresStore:
-    def __init__(self, rows: list[dict] | None = None, exc: Exception | None = None) -> None:
+    def __init__(
+        self,
+        rows: list[dict] | None = None,
+        exc: Exception | None = None,
+        indicator_rows: list[dict] | None = None,
+    ) -> None:
         self._rows = rows or []
+        self._indicator_rows = indicator_rows or []
         self._exc = exc
 
     async def fetch_recent_news(self, ticker: str, window_minutes: int = 30) -> list[dict]:
         if self._exc is not None:
             raise self._exc
         return self._rows
+
+    async def fetch_recent_indicators(self, ticker: str) -> list[dict]:
+        if self._exc is not None:
+            raise self._exc
+        return self._indicator_rows
 
 
 class FakePullSubscription:

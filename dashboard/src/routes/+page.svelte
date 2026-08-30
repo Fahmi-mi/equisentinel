@@ -81,6 +81,7 @@
 				<span class="h-2 w-2 rounded-full {statusMeta[socket.status].dot}"></span>
 				{statusMeta[socket.status].label}
 			</div>
+			<a href="/analytics" class="text-muted text-sm transition hover:text-white">Analytics</a>
 			<ThemeToggle />
 		</div>
 	</header>

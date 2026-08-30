@@ -7,6 +7,7 @@ import structlog
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel
 
+from graph.nodes.technical_context import NO_INDICATORS_CONTEXT
 from graph.state import AnalysisState
 from schemas import AIAnalysis, RiskLevel, Sentiment
 from storage.cache import SentimentCache
@@ -18,6 +19,7 @@ DEFAULT_SUMMARY = "Data tidak cukup untuk analisis, pantau secara manual."
 PROMPT_TEMPLATE = (
     "Saham {ticker} bergerak {price_change_pct}% dengan rasio volume {volume_ratio}x "
     "dibanding rata-rata. Berita terkait:\n{news_context}\n\n"
+    "Konteks teknikal:\n{technical_context}\n\n"
     "Analisis sentimen dan berikan risk level (LOW/MEDIUM/HIGH) beserta alasan singkat."
 )
 
@@ -63,6 +65,7 @@ def make_llm_reasoning_node(
             price_change_pct=state["price_change_pct"],
             volume_ratio=state["volume_ratio"],
             news_context=state.get("news_context", "Tidak ada berita."),
+            technical_context=state.get("technical_context", NO_INDICATORS_CONTEXT),
         )
 
         start = time.monotonic()

@@ -106,7 +106,32 @@ services:
       retries: 5
     stop_grace_period: 30s
 
+  etl:
+    build: ./etl
+    environment:
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER:-equisentinel}:${POSTGRES_PASSWORD:-equisentinel}@postgres:5432/${POSTGRES_DB:-equisentinel}
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-equisentinel}:${POSTGRES_PASSWORD:-equisentinel}@postgres:5432/${POSTGRES_DB:-equisentinel}
+      WAREHOUSE_DATABASE_URL: ${WAREHOUSE_DATABASE_URL:-postgresql://${POSTGRES_USER:-equisentinel}:${POSTGRES_PASSWORD:-equisentinel}@postgres:5432/${POSTGRES_DB:-equisentinel}}
+      ETL_HTTP_PORT: ${ETL_HTTP_PORT:-8083}
+    ports:
+      - "${AIRFLOW_WEBSERVER_PORT:-8090}:8080"
+      - "${ETL_HTTP_PORT:-8083}:${ETL_HTTP_PORT:-8083}"
+    volumes:
+      - etl_airflow_home:/app/airflow_home
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    stop_grace_period: 30s
+
 volumes:
   nats_data:
   postgres_data:
   redis_data:
+  etl_airflow_home:

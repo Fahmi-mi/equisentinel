@@ -1,0 +1,28 @@
+[project]
+name = "etl"
+version = "0.1.0"
+description = "EquiSentinel ETL — Airflow DAGs untuk agregasi candle, indikator teknikal, dan feature store"
+authors = [
+    { name = "Fahmi-mi", email = "fahmihaqqulihsan@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "aiohttp>=3.11.0",
+    "apache-airflow>=3.0.0",
+    "asyncpg>=0.30.0",
+    "pandas>=2.2.0",
+    "psycopg2-binary>=2.9.9",
+    "pydantic>=2.11.0",
+    "python-dotenv>=1.2.2",
+    "sqlalchemy>=2.0.0",
+    "structlog>=26.1.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.1,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]

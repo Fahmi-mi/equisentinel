@@ -10,6 +10,7 @@ AI_WORKER_PROTO_OUT := $(AI_WORKER_DIR)/proto_gen
 GATEWAY_DIR := gateway
 GATEWAY_PROTO_OUT := $(GATEWAY_DIR)/internal/proto
 DASHBOARD_DIR := dashboard
+ETL_DIR := etl
 
 .PHONY: proto
 proto: proto-python proto-ai-worker proto-go
@@ -73,7 +74,7 @@ logs:
 	docker compose logs -f
 
 .PHONY: test
-test: test-gateway test-simulator test-ai-worker test-dashboard
+test: test-gateway test-simulator test-ai-worker test-etl test-dashboard
 
 .PHONY: test-gateway
 test-gateway:
@@ -86,6 +87,10 @@ test-simulator:
 .PHONY: test-ai-worker
 test-ai-worker:
 	cd $(AI_WORKER_DIR) && uv run pytest
+
+.PHONY: test-etl
+test-etl:
+	cd $(ETL_DIR) && uv run pytest
 
 .PHONY: test-dashboard
 test-dashboard:
