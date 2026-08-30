@@ -43,6 +43,18 @@ jobs:
       - run: uv run pytest
         working-directory: ai-worker
 
+  etl:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          working-directory: etl
+      - run: uv sync
+        working-directory: etl
+      - run: uv run pytest
+        working-directory: etl
+
   dashboard:
     runs-on: ubuntu-latest
     steps:

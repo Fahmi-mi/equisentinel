@@ -10,6 +10,9 @@ __pycache__/
 .ruff_cache/
 .mypy_cache/
 
+# Airflow
+etl/airflow_home/
+
 # Generated protobuf code
 **/proto_gen/
 
