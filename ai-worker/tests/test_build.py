@@ -2,6 +2,7 @@ import asyncio
 
 from graph.build import build_graph
 from graph.nodes.llm_reasoning import _Verdict
+from graph.nodes.technical_context import NO_INDICATORS_CONTEXT
 from proto_gen import ai_analysis_pb2
 from schemas import RiskLevel, Sentiment
 from tests.fakes import (
@@ -62,6 +63,7 @@ def test_significant_anomaly_runs_full_pipeline():
     )
 
     assert result["news_context"] == "- GOTO Anjlok Tajam"
+    assert result["technical_context"] == NO_INDICATORS_CONTEXT
     assert result["analysis"].summary == "Sentimen negatif"
     assert len(js.published) == 1
 

@@ -28,3 +28,17 @@ class PostgresStore:
             window_minutes,
         )
         return [dict(row) for row in rows]
+
+    async def fetch_recent_indicators(self, ticker: str) -> list[dict]:
+        assert self._pool is not None
+        rows = await self._pool.fetch(
+            """
+            SELECT DISTINCT ON ("interval") ticker, "interval", "timestamp", sma, ema, rsi,
+                   bollinger_upper, bollinger_middle, bollinger_lower
+            FROM technical_indicators
+            WHERE ticker = $1
+            ORDER BY "interval", "timestamp" DESC
+            """,
+            ticker,
+        )
+        return [dict(row) for row in rows]

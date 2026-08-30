@@ -12,4 +12,5 @@ class AnalysisState(TypedDict):
     price_change_pct: float
     volume_ratio: float
     news_context: NotRequired[str]
+    technical_context: NotRequired[str]
     analysis: NotRequired[AIAnalysis]

@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -162,6 +163,125 @@ func (c *Client) QueryStockPrices(ctx context.Context, ticker string, limit int)
 	for rows.Next() {
 		var r StockPriceRow
 		if err := rows.Scan(&r.Ticker, &r.Open, &r.High, &r.Low, &r.Close, &r.Volume, &r.Timestamp); err != nil {
+			return nil, err
+		}
+		result = append(result, r)
+	}
+	return result, rows.Err()
+}
+
+var candleTables = map[string]string{
+	"1m": "candles_1m",
+	"5m": "candles_5m",
+	"1h": "candles_1h",
+}
+
+func candleTable(interval string) (string, bool) {
+	table, ok := candleTables[interval]
+	return table, ok
+}
+
+type CandleRow struct {
+	Ticker      string
+	BucketStart time.Time
+	Open        float64
+	High        float64
+	Low         float64
+	Close       float64
+	Volume      int64
+	TickCount   int32
+}
+
+func (c *Client) QueryCandles(ctx context.Context, ticker, interval string, limit int) ([]CandleRow, error) {
+	table, ok := candleTable(interval)
+	if !ok {
+		return nil, fmt.Errorf("unsupported interval: %s", interval)
+	}
+
+	rows, err := c.pool.Query(ctx, fmt.Sprintf(`
+		SELECT ticker, bucket_start, open, high, low, close, volume, tick_count FROM (
+			SELECT ticker, bucket_start, open, high, low, close, volume, tick_count
+			FROM %s
+			WHERE ticker = $1
+			ORDER BY bucket_start DESC
+			LIMIT $2
+		) recent
+		ORDER BY bucket_start ASC
+	`, table), ticker, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []CandleRow
+	for rows.Next() {
+		var r CandleRow
+		if err := rows.Scan(&r.Ticker, &r.BucketStart, &r.Open, &r.High, &r.Low, &r.Close, &r.Volume, &r.TickCount); err != nil {
+			return nil, err
+		}
+		result = append(result, r)
+	}
+	return result, rows.Err()
+}
+
+type IndicatorRow struct {
+	Ticker          string
+	Interval        string
+	Timestamp       time.Time
+	SMA             *float64
+	EMA             *float64
+	RSI             *float64
+	BollingerUpper  *float64
+	BollingerMiddle *float64
+	BollingerLower  *float64
+}
+
+func (c *Client) QueryTechnicalIndicators(ctx context.Context, ticker, interval string, limit int) ([]IndicatorRow, error) {
+	rows, err := c.pool.Query(ctx, `
+		SELECT ticker, "interval", "timestamp", sma, ema, rsi,
+		       bollinger_upper, bollinger_middle, bollinger_lower FROM (
+			SELECT ticker, "interval", "timestamp", sma, ema, rsi,
+			       bollinger_upper, bollinger_middle, bollinger_lower
+			FROM technical_indicators
+			WHERE ticker = $1 AND "interval" = $2
+			ORDER BY "timestamp" DESC
+			LIMIT $3
+		) recent
+		ORDER BY "timestamp" ASC
+	`, ticker, interval, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []IndicatorRow
+	for rows.Next() {
+		var r IndicatorRow
+		if err := rows.Scan(&r.Ticker, &r.Interval, &r.Timestamp, &r.SMA, &r.EMA, &r.RSI, &r.BollingerUpper, &r.BollingerMiddle, &r.BollingerLower); err != nil {
+			return nil, err
+		}
+		result = append(result, r)
+	}
+	return result, rows.Err()
+}
+
+func (c *Client) QueryLatestIndicators(ctx context.Context, interval string) ([]IndicatorRow, error) {
+	rows, err := c.pool.Query(ctx, `
+		SELECT DISTINCT ON (ticker) ticker, "interval", "timestamp", sma, ema, rsi,
+		       bollinger_upper, bollinger_middle, bollinger_lower
+		FROM technical_indicators
+		WHERE "interval" = $1
+		ORDER BY ticker, "timestamp" DESC
+	`, interval)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []IndicatorRow
+	for rows.Next() {
+		var r IndicatorRow
+		if err := rows.Scan(&r.Ticker, &r.Interval, &r.Timestamp, &r.SMA, &r.EMA, &r.RSI, &r.BollingerUpper, &r.BollingerMiddle, &r.BollingerLower); err != nil {
 			return nil, err
 		}
 		result = append(result, r)

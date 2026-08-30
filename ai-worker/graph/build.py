@@ -10,6 +10,7 @@ from graph.nodes.context_retrieval import make_context_retrieval_node
 from graph.nodes.llm_reasoning import make_llm_reasoning_node
 from graph.nodes.structured_output import make_structured_output_node
 from graph.nodes.technical_check import technical_check
+from graph.nodes.technical_context import make_technical_context_node
 from graph.state import AnalysisState
 from storage.cache import SentimentCache
 from storage.postgres import PostgresStore
@@ -31,6 +32,7 @@ def build_graph(
 
     graph.add_node("technical_check", technical_check)
     graph.add_node("context_retrieval", make_context_retrieval_node(postgres, js))
+    graph.add_node("technical_context", make_technical_context_node(postgres))
     graph.add_node(
         "llm_reasoning",
         make_llm_reasoning_node(llm_client, cache, model_name, on_llm_call_result),
@@ -43,7 +45,8 @@ def build_graph(
         _route_after_technical_check,
         {"skip": END, "continue": "context_retrieval"},
     )
-    graph.add_edge("context_retrieval", "llm_reasoning")
+    graph.add_edge("context_retrieval", "technical_context")
+    graph.add_edge("technical_context", "llm_reasoning")
     graph.add_edge("llm_reasoning", "structured_output")
     graph.add_edge("structured_output", END)
 
