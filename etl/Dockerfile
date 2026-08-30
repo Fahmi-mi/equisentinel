@@ -25,4 +25,4 @@ ENV AIRFLOW_HOME=/app/airflow_home
 ENV AIRFLOW__CORE__DAGS_FOLDER=/app/dags
 ENV AIRFLOW__CORE__LOAD_EXAMPLES=false
 
-CMD ["airflow", "standalone"]
+CMD ["python", "-m", "etl.entrypoint"]

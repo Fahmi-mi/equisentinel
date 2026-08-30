@@ -3,7 +3,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from transform.candles import aggregate_candles
+from etl.transform.candles import aggregate_candles
 
 
 def test_aggregates_ticks_into_bucket():

@@ -129,6 +129,15 @@ func main() {
 	mux.HandleFunc("/feedback", func(w http.ResponseWriter, r *http.Request) {
 		handleFeedback(w, r, pg)
 	})
+	mux.HandleFunc("/candles", func(w http.ResponseWriter, r *http.Request) {
+		handleCandles(w, r, pg)
+	})
+	mux.HandleFunc("/indicators", func(w http.ResponseWriter, r *http.Request) {
+		handleIndicators(w, r, pg)
+	})
+	mux.HandleFunc("/indicators/summary", func(w http.ResponseWriter, r *http.Request) {
+		handleIndicatorsSummary(w, r, pg)
+	})
 
 	srv := &http.Server{Addr: ":" + cfg.HTTPPort, Handler: mux}
 
@@ -377,6 +386,158 @@ func handleFeedback(w http.ResponseWriter, r *http.Request, pg *postgres.Client)
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+const defaultCandlesLimit = 500
+const defaultIndicatorsLimit = 500
+
+var supportedIntervals = map[string]bool{"1m": true, "5m": true, "1h": true}
+
+func parseInterval(value string) string {
+	if supportedIntervals[value] {
+		return value
+	}
+	return "1m"
+}
+
+type candleWire struct {
+	BucketStart string  `json:"bucketStart"`
+	Open        float64 `json:"open"`
+	High        float64 `json:"high"`
+	Low         float64 `json:"low"`
+	Close       float64 `json:"close"`
+	Volume      string  `json:"volume"`
+	TickCount   int32   `json:"tickCount"`
+}
+
+type indicatorWire struct {
+	Ticker          string   `json:"ticker"`
+	Timestamp       string   `json:"timestamp"`
+	SMA             *float64 `json:"sma"`
+	EMA             *float64 `json:"ema"`
+	RSI             *float64 `json:"rsi"`
+	BollingerUpper  *float64 `json:"bollingerUpper"`
+	BollingerMiddle *float64 `json:"bollingerMiddle"`
+	BollingerLower  *float64 `json:"bollingerLower"`
+}
+
+func handleCandles(w http.ResponseWriter, r *http.Request, pg *postgres.Client) {
+	ticker := r.URL.Query().Get("ticker")
+	if ticker == "" {
+		http.Error(w, "ticker is required", http.StatusBadRequest)
+		return
+	}
+
+	interval := parseInterval(r.URL.Query().Get("interval"))
+	limit := defaultCandlesLimit
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 && parsed <= defaultCandlesLimit {
+			limit = parsed
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	rows, err := pg.QueryCandles(ctx, ticker, interval, limit)
+	if err != nil {
+		log.Error().Err(err).Msg("candles_query_failed")
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	candles := make([]candleWire, len(rows))
+	for i, row := range rows {
+		candles[i] = candleWire{
+			BucketStart: row.BucketStart.UTC().Format(time.RFC3339),
+			Open:        row.Open,
+			High:        row.High,
+			Low:         row.Low,
+			Close:       row.Close,
+			Volume:      strconv.FormatInt(row.Volume, 10),
+			TickCount:   row.TickCount,
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(struct {
+		Ticker   string       `json:"ticker"`
+		Interval string       `json:"interval"`
+		Candles  []candleWire `json:"candles"`
+	}{Ticker: ticker, Interval: interval, Candles: candles})
+}
+
+func handleIndicators(w http.ResponseWriter, r *http.Request, pg *postgres.Client) {
+	ticker := r.URL.Query().Get("ticker")
+	if ticker == "" {
+		http.Error(w, "ticker is required", http.StatusBadRequest)
+		return
+	}
+
+	interval := parseInterval(r.URL.Query().Get("interval"))
+	limit := defaultIndicatorsLimit
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 && parsed <= defaultIndicatorsLimit {
+			limit = parsed
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	rows, err := pg.QueryTechnicalIndicators(ctx, ticker, interval, limit)
+	if err != nil {
+		log.Error().Err(err).Msg("indicators_query_failed")
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	indicators := make([]indicatorWire, len(rows))
+	for i, row := range rows {
+		indicators[i] = toIndicatorWire(row)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(struct {
+		Ticker     string          `json:"ticker"`
+		Interval   string          `json:"interval"`
+		Indicators []indicatorWire `json:"indicators"`
+	}{Ticker: ticker, Interval: interval, Indicators: indicators})
+}
+
+func handleIndicatorsSummary(w http.ResponseWriter, r *http.Request, pg *postgres.Client) {
+	interval := parseInterval(r.URL.Query().Get("interval"))
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	rows, err := pg.QueryLatestIndicators(ctx, interval)
+	if err != nil {
+		log.Error().Err(err).Msg("indicators_summary_query_failed")
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	indicators := make([]indicatorWire, len(rows))
+	for i, row := range rows {
+		indicators[i] = toIndicatorWire(row)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(struct {
+		Interval   string          `json:"interval"`
+		Indicators []indicatorWire `json:"indicators"`
+	}{Interval: interval, Indicators: indicators})
+}
+
+func toIndicatorWire(row postgres.IndicatorRow) indicatorWire {
+	return indicatorWire{
+		Ticker:          row.Ticker,
+		Timestamp:       row.Timestamp.UTC().Format(time.RFC3339),
+		SMA:             row.SMA,
+		EMA:             row.EMA,
+		RSI:             row.RSI,
+		BollingerUpper:  row.BollingerUpper,
+		BollingerMiddle: row.BollingerMiddle,
+		BollingerLower:  row.BollingerLower,
+	}
 }
 
 func handleNewsArticle(msg *nats.Msg, pg *postgres.Client) {

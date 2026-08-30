@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from transform.indicators import compute_indicators
+from etl.transform.indicators import compute_indicators
 
 
 def _make_candles(ticker: str, n: int, seed: int = 42) -> pd.DataFrame:

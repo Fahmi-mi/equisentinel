@@ -18,5 +18,5 @@ def load_settings() -> ETLSettings:
     return ETLSettings(
         source_database_url=source_database_url,
         warehouse_database_url=os.getenv("WAREHOUSE_DATABASE_URL", source_database_url),
-        http_port=os.getenv("ETL_HTTP_PORT", "8082"),
+        http_port=os.getenv("ETL_HTTP_PORT", "8083"),
     )

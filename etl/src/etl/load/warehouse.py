@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 
 import pandas as pd
 import structlog
 from sqlalchemy import text
 
-from storage.warehouse_db import WarehouseDB
+from etl.storage.warehouse_db import WarehouseDB
 
 log = structlog.get_logger()
 
@@ -43,6 +44,31 @@ def read_candles(db: WarehouseDB, ticker: str, interval: str, start: datetime, e
         raise
 
     log.info("read_candles_done", ticker=ticker, interval=interval, row_count=len(df))
+    return df
+
+
+def read_technical_indicators(
+    db: WarehouseDB, ticker: str, interval: str, start: datetime, end: datetime
+) -> pd.DataFrame:
+    query = """
+        SELECT ticker, "interval", "timestamp", sma, ema, rsi,
+               bollinger_upper, bollinger_middle, bollinger_lower
+        FROM technical_indicators
+        WHERE ticker = %(ticker)s
+          AND "interval" = %(interval)s
+          AND "timestamp" >= %(start)s
+          AND "timestamp" < %(end)s
+        ORDER BY "timestamp" ASC
+    """
+
+    try:
+        with db.warehouse_connection() as conn:
+            df = pd.read_sql(query, conn, params={"ticker": ticker, "interval": interval, "start": start, "end": end})
+    except Exception:
+        log.error("read_technical_indicators_failed", ticker=ticker, interval=interval, exc_info=True)
+        raise
+
+    log.info("read_technical_indicators_done", ticker=ticker, interval=interval, row_count=len(df))
     return df
 
 

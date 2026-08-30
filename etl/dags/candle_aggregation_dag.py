@@ -1,20 +1,14 @@
 from __future__ import annotations
 
-
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
 from datetime import datetime, timedelta, timezone
 
 from airflow.sdk import dag, task
 
-from config import load_settings
-from extract.postgres_source import extract_distinct_tickers, extract_stock_prices
-from load.warehouse import load_candles
-from storage.warehouse_db import WarehouseDB
-from transform.candles import aggregate_candles
+from etl.config import load_settings
+from etl.extract.postgres_source import extract_distinct_tickers, extract_stock_prices
+from etl.load.warehouse import load_candles
+from etl.storage.warehouse_db import WarehouseDB
+from etl.transform.candles import aggregate_candles
 
 LOOKBACK = timedelta(hours=2)
 INTERVALS = ["1m", "5m", "1h"]

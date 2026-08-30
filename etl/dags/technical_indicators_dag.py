@@ -1,20 +1,15 @@
 from __future__ import annotations
 
-
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
 from datetime import datetime, timedelta, timezone
 
 from airflow.sdk import dag, task
 
-from config import load_settings
-from extract.postgres_source import extract_distinct_tickers
-from load.warehouse import load_technical_indicators, read_candles
-from storage.warehouse_db import WarehouseDB
-from transform.indicators import compute_indicators
+from etl.config import load_settings
+from etl.extract.postgres_source import extract_distinct_tickers
+from etl.load.warehouse import load_technical_indicators, read_candles
+from etl.storage.warehouse_db import WarehouseDB
+from etl.transform.cleaning import fill_gaps
+from etl.transform.indicators import compute_indicators
 
 
 LOOKBACK = timedelta(days=2)
@@ -39,6 +34,7 @@ def compute_and_load(ticker: str) -> None:
     try:
         for interval in INTERVALS:
             candles = read_candles(db, ticker, interval, start, end)
+            candles = fill_gaps(candles, interval)
             indicators = compute_indicators(candles, interval)
             load_technical_indicators(db, indicators)
     finally:

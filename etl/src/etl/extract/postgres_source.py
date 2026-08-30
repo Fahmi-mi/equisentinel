@@ -6,7 +6,7 @@ import pandas as pd
 import structlog
 from sqlalchemy import text
 
-from storage.warehouse_db import WarehouseDB
+from etl.storage.warehouse_db import WarehouseDB
 
 log = structlog.get_logger()
 

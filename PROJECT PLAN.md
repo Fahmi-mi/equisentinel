@@ -37,6 +37,7 @@ Mengingat kompleksitas sistem, pengerjaan dibagi menjadi 3 fase bertahap agar pr
 | Fase 1 — Fondasi | Minggu 1–3 | Simulator + NATS + Go WebSocket + Dashboard basic (grafik live) | Selesai |
 | Fase 2 — AI Core | Minggu 4–6 | Python AI Worker + LangGraph state machine + notifikasi anomali | Selesai |
 | Fase 3 — Polish | Minggu 7+ | Human-in-the-Loop feedback, historis PostgreSQL, LangSmith monitoring | Selesai |
+| Fase 4 — Data Engineering (Opsional) | Iteratif | Airflow ETL + tabel warehouse (candles, indikator, feature store) + dashboard analitik + konteks teknikal AI | Selesai |
 
 ---
 
@@ -254,15 +255,16 @@ Monorepo dengan struktur berikut:
   * /proto — Definisi .proto untuk semua kontrak data
   * /migrations — SQL migration, diapply lewat `make migrate`
   * /simulator — Python data generator (uv project)
-  * /gateway — Go service (API Gateway + WebSocket + Anomaly Detector + REST history/feedback API)
+  * /gateway — Go service (API Gateway + WebSocket + Anomaly Detector + REST history/analytics/feedback API)
   * /ai-worker — Python AI Engine (uv project, LangGraph, DeepSeek API)
+  * /etl — Python Airflow project (uv, src layout): DAG ETL, health server, extract/transform/load ke warehouse
   * /dashboard — SvelteKit application (dijalankan lokal, tidak dikontainerisasi)
   * /.github/workflows — CI (unit test + lint per push/PR)
 
 ---
 
 # 13. Fase 4 (Opsional) — Data Engineering & ETL Layer
-Fase ini bersifat opsional dan baru dipertimbangkan setelah Fase 1–3 selesai sepenuhnya dan stabil. Tujuannya menambahkan layer batch processing untuk analitik historis yang lebih kaya, tanpa mengganggu jalur real-time yang sudah berjalan. Disimpan sebagai referensi untuk dipertimbangkan di kemudian hari — belum akan dikerjakan dalam waktu dekat.
+Fase ini bersifat opsional dan dikerjakan setelah Fase 1–3 selesai sepenuhnya dan stabil. Tujuannya menambahkan layer batch processing untuk analitik historis yang lebih kaya, tanpa mengganggu jalur real-time yang sudah berjalan. **Status: Selesai** — detail implementasi aktual dicatat di §13.6.
 
 ## 13.1 Posisi dalam Arsitektur
 Fase 4 berjalan berdampingan (bukan menggantikan) jalur real-time NATS + Go yang sudah ada. NATS/Go menangani streaming per detik; ETL menangani pemrosesan batch terjadwal (per beberapa menit/jam) untuk agregasi dan analitik historis.
@@ -305,5 +307,20 @@ Fase 4 baru layak dimulai jika seluruh kondisi berikut terpenuhi:
 1. Fase 1–3 berjalan stabil tanpa bug kritis selama minimal beberapa hari berturut-turut.
 2. Tidak ada lagi perubahan besar yang direncanakan pada skema tabel PostgreSQL existing.
 3. Tersedia waktu dan resource tambahan untuk melanjutkan sebagai proyek iteratif.
+
+Ketiga kriteria terpenuhi, sehingga Fase 4 dikerjakan sebagai iterasi di atas fondasi existing — hasilnya dicatat di §13.6.
+
+## 13.6 Catatan As-Built
+
+Implementasi aktual (deviasi dari rencana di atas, semuanya aditif):
+
+* **Struktur /etl**: package Python `src/etl` (bukan modul flat) — DAG mengimpor `etl.*` tanpa hack sys.path. Health server ETL di-wire via `etl.entrypoint` (aiohttp + spawn `airflow standalone`), port `ETL_HTTP_PORT` (default 8083, terpisah dari simulator 8082).
+* **Airflow 3.x**: CLI user management berubah — `airflow users` dihapus, diganti Simple Auth Manager. Password admin disimpan di `airflow_home/simple_auth_manager_passwords.json.generated` dan tidak dicetak ulang di log setelah run pertama.
+* **DAG**: candle_aggregation (setiap 5 menit), technical_indicators (setiap 10 menit, dengan gap filling sebelum kalkulasi), data_quality (setiap jam, deteksi + log saja), feature_store (setiap 15 menit, mengisi `feature_store_ai` dari indikator terbaru per interval).
+* **Data cleaning**: `fill_gaps` (forward-fill harga, volume/tick_count 0) di-wire ke DAG indikator; outlier hanya dideteksi & dilog (tidak dihapus dari warehouse) karena candle anomali adalah sinyal utama sistem.
+* **Gateway**: endpoint baru `/candles`, `/indicators`, `/indicators/summary` (interval divalidasi allowlist 1m/5m/1h).
+* **Dashboard**: halaman `/analytics` — chart candlestick + overlay SMA/EMA/Bollinger + panel RSI, serta tabel perbandingan indikator antar emiten.
+* **AI Worker**: state LangGraph baru `technical_context` membaca `technical_indicators` (terbaru per interval via DISTINCT ON) dan menyertakannya ke prompt LLM; fallback aman jika tabel kosong.
+* **Keputusan yang dilewati (opsional)**: dbt, pgbouncer, integrasi API eksternal historis (hanya stub `fetch_external_history`), laporan periodik di dashboard. `feature_store_ai` diisi tapi belum dikonsumsi AI worker (AI worker membaca `technical_indicators` langsung). Transform memakai pandas (polars tidak dipakai).
 
 > *Estimasi effort Fase 4 jauh lebih ringan dibanding Fase 1–3 karena tidak ada pembangunan ulang — murni menambah satu layer baru di atas fondasi yang sudah ada.*

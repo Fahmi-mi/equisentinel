@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from transform.cleaning import detect_gaps, detect_ohlc_anomalies, detect_price_outliers
+from etl.transform.cleaning import detect_gaps, detect_ohlc_anomalies, detect_price_outliers
 
 
 def test_detect_ohlc_anomalies_flags_invalid_row():

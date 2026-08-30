@@ -6,7 +6,7 @@ from typing import Iterator
 import structlog
 from sqlalchemy import Connection, Engine, create_engine
 
-from config import ETLSettings
+from etl.config import ETLSettings
 
 log = structlog.get_logger()
 

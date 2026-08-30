@@ -1,21 +1,15 @@
 from __future__ import annotations
 
-
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
 from datetime import datetime, timedelta, timezone
 
 import structlog
 from airflow.sdk import dag, task
 
-from config import load_settings
-from extract.postgres_source import extract_distinct_tickers
-from load.warehouse import read_candles
-from storage.warehouse_db import WarehouseDB
-from transform.cleaning import detect_gaps, detect_ohlc_anomalies, detect_price_outliers
+from etl.config import load_settings
+from etl.extract.postgres_source import extract_distinct_tickers
+from etl.load.warehouse import read_candles
+from etl.storage.warehouse_db import WarehouseDB
+from etl.transform.cleaning import detect_gaps, detect_ohlc_anomalies, detect_price_outliers
 
 log = structlog.get_logger()
 
